@@ -214,7 +214,17 @@ public class WorldsManager {
         if (gen != null) wc.generator(gen);
         BiomeProvider bp = biomeProviderFor(r);
         if (bp != null) wc.biomeProvider(bp);
-        return Bukkit.createWorld(wc);
+        try {
+            return Bukkit.createWorld(wc);
+        } catch (UnsupportedOperationException foliaEx) {
+            // Folia no permite cargar/crear mundos en tiempo real vía la API de Bukkit.
+            // Los mundos deben estar configurados para cargar al arrancar el servidor.
+            plugin.getLogger().warning(
+                "[ETCWorlds] Folia no soporta carga de mundos en tiempo real. "
+                + "El mundo '" + name + "' está registrado pero NO cargado. "
+                + "Para usarlo, agrega su carpeta al servidor y reinicia.");
+            return null;
+        }
     }
 
     private WorldType mapType(WorldTemplate t) {
@@ -259,7 +269,14 @@ public class WorldsManager {
         World w = Bukkit.getWorld(name);
         if (w == null) return true;
         if (!w.getPlayers().isEmpty()) return false;
-        return Bukkit.unloadWorld(w, save);
+        try {
+            return Bukkit.unloadWorld(w, save);
+        } catch (UnsupportedOperationException foliaEx) {
+            plugin.getLogger().warning(
+                "[ETCWorlds] Folia no soporta descarga de mundos en tiempo real. "
+                + "El mundo '" + name + "' seguirá cargado hasta que se reinicie el servidor.");
+            return false;
+        }
     }
 
     public synchronized boolean importExisting(String name, String relativeFolder) {

@@ -43,8 +43,19 @@ public class LazyTeleportService {
             Bukkit.getGlobalRegionScheduler().run(plugin, task -> {
                 World w2 = plugin.worlds().loadWorld(worldName);
                 if (w2 == null) {
-                    player.getScheduler().run(plugin,
-                        t -> send(player, "unknown-world", "{world}", worldName), null);
+                    player.getScheduler().run(plugin, t -> {
+                        // Folia bloquea Bukkit.createWorld() — mundo registrado pero no cargado
+                        boolean isFolia = isFolia();
+                        if (isFolia) {
+                            player.sendMessage(org.bukkit.ChatColor.RED
+                                + "[ETCWorlds] El mundo '" + worldName + "' no está cargado."
+                                + org.bukkit.ChatColor.YELLOW
+                                + " En servidores Folia, los mundos deben estar presentes al arrancar el servidor."
+                                + " Contacta a un administrador.");
+                        } else {
+                            send(player, "unknown-world", "{world}", worldName);
+                        }
+                    }, null);
                     return;
                 }
                 continueWithTeleport(player, w2, worldName, destinationOrNull, enabled, radius, timeoutMs);
@@ -102,6 +113,15 @@ public class LazyTeleportService {
             else if (Boolean.TRUE.equals(ok))
                 send(p, "teleport-success", "{world}", dest.getWorld().getName());
         });
+    }
+
+    private static boolean isFolia() {
+        try {
+            Class.forName("io.papermc.paper.threadedregions.RegionizedServer");
+            return true;
+        } catch (ClassNotFoundException e) {
+            return false;
+        }
     }
 
     private void send(Player p, String key, String... pairs) {

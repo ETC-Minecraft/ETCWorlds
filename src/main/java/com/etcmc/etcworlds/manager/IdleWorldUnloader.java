@@ -58,8 +58,12 @@ public class IdleWorldUnloader {
                     plugin.getLogger().info("Mundo descargado por inactividad: " + name);
                     emptySince.remove(name);
                 }
+            } catch (UnsupportedOperationException foliaEx) {
+                // Folia no permite descarga dinámica — resetear el timer para no loggear cada ciclo
+                emptySince.remove(name);
             } catch (Exception ex) {
                 plugin.getLogger().log(Level.WARNING, "Error descargando " + name, ex);
+                emptySince.remove(name);
             }
         }
     }
