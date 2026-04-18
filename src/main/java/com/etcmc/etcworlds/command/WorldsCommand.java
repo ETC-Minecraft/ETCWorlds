@@ -80,7 +80,8 @@ public class WorldsCommand implements CommandExecutor, TabCompleter {
                 default -> { help(s); yield true; }
             };
         } catch (Exception ex) {
-            s.sendMessage(ChatColor.RED + "Error: " + ex.getMessage());
+            String msg = ex.getMessage() != null ? ex.getMessage() : ex.getClass().getSimpleName();
+            s.sendMessage(ChatColor.RED + "Error: " + msg);
             plugin.getLogger().warning(ex.toString());
             return true;
         }
@@ -112,12 +113,31 @@ public class WorldsCommand implements CommandExecutor, TabCompleter {
             if (kv.length != 2) continue;
             applyCreateOption(r, kv[0], kv[1]);
         }
+        // Validar combinación template + environment
+        if (r.environment != World.Environment.NORMAL &&
+                (r.template == WorldTemplate.FLAT ||
+                 r.template == WorldTemplate.AMPLIFIED ||
+                 r.template == WorldTemplate.LARGE_BIOMES)) {
+            s.sendMessage(ChatColor.RED + "Template " + r.template + " solo es compatible con environment NORMAL.");
+            s.sendMessage(ChatColor.GRAY + "Para entornos Nether/End usa template NORMAL o VOID.");
+            return true;
+        }
+        final WorldRules rules = r;
         s.sendMessage(ChatColor.GRAY + "Creando mundo " + ChatColor.WHITE + name + ChatColor.GRAY +
-                " (" + r.template + " / " + r.environment + ")...");
-        long t0 = System.currentTimeMillis();
-        World w = plugin.worlds().createWorld(name, r);
-        if (w == null) { s.sendMessage(ChatColor.RED + "Falló."); return true; }
-        s.sendMessage(ChatColor.GREEN + "Mundo creado en " + (System.currentTimeMillis() - t0) + "ms.");
+                " (" + rules.template + " / " + rules.environment + ")...");
+        // createWorld debe ejecutarse en el hilo global (Folia requirement)
+        Bukkit.getGlobalRegionScheduler().run(plugin, task -> {
+            try {
+                long t0 = System.currentTimeMillis();
+                World w = plugin.worlds().createWorld(name, rules);
+                if (w == null) s.sendMessage(ChatColor.RED + "Falló la creación del mundo.");
+                else s.sendMessage(ChatColor.GREEN + "Mundo " + name + " creado en " + (System.currentTimeMillis() - t0) + "ms.");
+            } catch (Exception ex) {
+                String msg = ex.getMessage() != null ? ex.getMessage() : ex.getClass().getSimpleName();
+                s.sendMessage(ChatColor.RED + "Error creando mundo: " + msg);
+                plugin.getLogger().warning("create world error: " + ex);
+            }
+        });
         return true;
     }
 
@@ -144,27 +164,46 @@ public class WorldsCommand implements CommandExecutor, TabCompleter {
             s.sendMessage(ChatColor.YELLOW + "Confirma: " + ChatColor.WHITE + "/etcworlds delete " + a[1] + " confirm");
             return true;
         }
-        if (plugin.worlds().deleteWorld(a[1])) s.sendMessage(ChatColor.GREEN + "Mundo eliminado: " + a[1]);
-        else s.sendMessage(ChatColor.RED + "No se pudo eliminar.");
+        String toDelete = a[1];
+        Bukkit.getGlobalRegionScheduler().run(plugin, task -> {
+            if (plugin.worlds().deleteWorld(toDelete)) s.sendMessage(ChatColor.GREEN + "Mundo eliminado: " + toDelete);
+            else s.sendMessage(ChatColor.RED + "No se pudo eliminar.");
+        });
         return true;
     }
 
     private boolean load(CommandSender s, String[] a) {
         if (!s.hasPermission("etcworlds.load")) { noPerm(s); return true; }
         if (a.length < 2) return true;
-        World w = plugin.worlds().loadWorld(a[1]);
-        s.sendMessage(w != null ? ChatColor.GREEN + "Cargado: " + a[1] : ChatColor.RED + "No se pudo cargar.");
+        String name = a[1];
+        s.sendMessage(ChatColor.GRAY + "Cargando " + name + "...");
+        Bukkit.getGlobalRegionScheduler().run(plugin, task -> {
+            try {
+                World w = plugin.worlds().loadWorld(name);
+                s.sendMessage(w != null ? ChatColor.GREEN + "Cargado: " + name : ChatColor.RED + "No se pudo cargar: " + name);
+            } catch (Exception ex) {
+                s.sendMessage(ChatColor.RED + "Error: " + ex.getMessage());
+            }
+        });
         return true;
     }
 
     private boolean unload(CommandSender s, String[] a) {
         if (!s.hasPermission("etcworlds.unload")) { noPerm(s); return true; }
         if (a.length < 2) return true;
+        String name = a[1];
         boolean save = a.length < 3 || !a[2].equalsIgnoreCase("nosave");
-        if (plugin.worlds().unloadWorld(a[1], save))
-            s.sendMessage(ChatColor.GREEN + "Descargado: " + a[1]);
-        else
-            s.sendMessage(ChatColor.RED + "No se pudo descargar (¿hay jugadores?).");
+        World w = Bukkit.getWorld(name);
+        if (w != null && !w.getPlayers().isEmpty()) {
+            s.sendMessage(ChatColor.RED + "No se puede descargar: hay jugadores en el mundo.");
+            return true;
+        }
+        Bukkit.getGlobalRegionScheduler().run(plugin, task -> {
+            if (plugin.worlds().unloadWorld(name, save))
+                s.sendMessage(ChatColor.GREEN + "Descargado: " + name);
+            else
+                s.sendMessage(ChatColor.RED + "No se pudo descargar.");
+        });
         return true;
     }
 

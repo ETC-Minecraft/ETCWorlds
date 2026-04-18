@@ -98,8 +98,23 @@ public class WorldsManager {
 
     /** Carga al inicio los mundos persistidos que no estén ya cargados (los vanilla los maneja Bukkit). */
     public void loadStartupWorlds() {
+        // Auto-registrar todos los mundos que Bukkit ya tiene cargados (world, world_nether, Lobby, etc.)
+        for (World w : Bukkit.getWorlds()) {
+            String name = w.getName();
+            if (!registryFolder.containsKey(name)) {
+                registryFolder.put(name, name);
+                WorldRules r = new WorldRules();
+                r.name = name;
+                r.environment = w.getEnvironment();
+                r.ambient = w.getEnvironment();
+                rules.put(name, r);
+                plugin.getLogger().info("Auto-registrado mundo existente: " + name);
+            }
+        }
+        saveRegistry();
+
         List<String> keepLoaded = plugin.getConfig().getStringList("keep-loaded");
-        for (Map.Entry<String, String> e : registryFolder.entrySet()) {
+        for (Map.Entry<String, String> e : new java.util.HashMap<>(registryFolder).entrySet()) {
             String name = e.getKey();
             if (Bukkit.getWorld(name) != null) continue;
             WorldRules r = rules.get(name);

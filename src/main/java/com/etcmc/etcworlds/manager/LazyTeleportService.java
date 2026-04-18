@@ -34,13 +34,29 @@ public class LazyTeleportService {
 
         World world = Bukkit.getWorld(worldName);
         if (world == null) {
-            send(player, "world-loading", "{world}", worldName);
-            world = plugin.worlds().loadWorld(worldName);
-            if (world == null) {
+            if (!plugin.worlds().isManaged(worldName)) {
                 send(player, "unknown-world", "{world}", worldName);
                 return;
             }
+            // loadWorld llama a Bukkit.createWorld — debe correr en el hilo global (Folia)
+            send(player, "world-loading", "{world}", worldName);
+            Bukkit.getGlobalRegionScheduler().run(plugin, task -> {
+                World w2 = plugin.worlds().loadWorld(worldName);
+                if (w2 == null) {
+                    player.getScheduler().run(plugin,
+                        t -> send(player, "unknown-world", "{world}", worldName), null);
+                    return;
+                }
+                continueWithTeleport(player, w2, worldName, destinationOrNull, enabled, radius, timeoutMs);
+            });
+            return;
         }
+        continueWithTeleport(player, world, worldName, destinationOrNull, enabled, radius, timeoutMs);
+    }
+
+    private void continueWithTeleport(Player player, World world, String worldName,
+                                      Location destinationOrNull,
+                                      boolean enabled, int radius, long timeoutMs) {
         Location dest0 = destinationOrNull;
         if (dest0 == null) {
             var rules = plugin.worlds().getRules(worldName);
