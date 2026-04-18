@@ -229,10 +229,10 @@ public class WorldsManager {
     public synchronized boolean deleteWorld(String name) {
         World w = Bukkit.getWorld(name);
         if (w != null) {
-            for (Player p : new ArrayList<>(w.getPlayers())) {
-                World fb = Bukkit.getWorlds().get(0);
-                p.teleport(fb.getSpawnLocation());
-            }
+            World fb = Bukkit.getWorlds().get(0);
+            Location fbSpawn = fb.getSpawnLocation();
+            for (Player p : new ArrayList<>(w.getPlayers()))
+                p.teleportAsync(fbSpawn); // async es legal en cualquier hilo en Folia
             if (!Bukkit.unloadWorld(w, false)) return false;
         }
         File dir = worldDirOf(name);

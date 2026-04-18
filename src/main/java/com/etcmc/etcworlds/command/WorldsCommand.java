@@ -440,10 +440,19 @@ public class WorldsCommand implements CommandExecutor, TabCompleter {
         if (!s.hasPermission("etcworlds.tp")) { noPerm(s); return true; }
         if (a.length < 2) { s.sendMessage(ChatColor.YELLOW + "Uso: /etcworlds instance <plantilla>"); return true; }
         if (!(s instanceof Player p)) { s.sendMessage(ChatColor.RED + "Solo jugadores."); return true; }
-        try {
-            World w = plugin.instances().ensureInstance(p, a[1]);
-            plugin.lazyTeleport().teleport(p, w.getName(), null);
-        } catch (Exception ex) { s.sendMessage(ChatColor.RED + "Error: " + ex.getMessage()); }
+        String template = a[1];
+        s.sendMessage(ChatColor.GRAY + "Preparando instancia de " + template + "...");
+        // ensureInstance puede llamar loadWorld — debe correr en el hilo global
+        Bukkit.getGlobalRegionScheduler().run(plugin, task -> {
+            try {
+                World w = plugin.instances().ensureInstance(p, template);
+                plugin.lazyTeleport().teleport(p, w.getName(), null);
+            } catch (Exception ex) {
+                String msg = ex.getMessage() != null ? ex.getMessage() : ex.getClass().getSimpleName();
+                p.sendMessage(ChatColor.RED + "Error: " + msg);
+                plugin.getLogger().warning("instance error: " + ex);
+            }
+        });
         return true;
     }
 

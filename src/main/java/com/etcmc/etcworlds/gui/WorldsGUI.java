@@ -104,15 +104,22 @@ public class WorldsGUI implements Listener {
         } else if (e.getClick() == ClickType.SHIFT_LEFT || e.getClick() == ClickType.SHIFT_RIGHT) {
             World w = Bukkit.getWorld(name);
             if (w != null && w.getPlayers().isEmpty()) {
-                plugin.worlds().unloadWorld(name, true);
-                p.sendMessage(ChatColor.GRAY + "Descargado " + name);
+                final String finalName = name;
+                Bukkit.getGlobalRegionScheduler().run(plugin, task -> {
+                    plugin.worlds().unloadWorld(finalName, true);
+                    p.sendMessage(ChatColor.GRAY + "Descargado " + finalName);
+                    p.getScheduler().run(plugin, t -> open(p), null);
+                });
             } else if (w == null) {
-                plugin.worlds().loadWorld(name);
-                p.sendMessage(ChatColor.GRAY + "Cargado " + name);
+                final String finalName = name;
+                p.sendMessage(ChatColor.GRAY + "Cargando " + finalName + "...");
+                Bukkit.getGlobalRegionScheduler().run(plugin, task -> {
+                    plugin.worlds().loadWorld(finalName);
+                    p.getScheduler().run(plugin, t -> open(p), null);
+                });
             } else {
                 p.sendMessage(ChatColor.RED + "Hay jugadores en ese mundo.");
             }
-            open(p);
         } else {
             p.closeInventory();
             plugin.lazyTeleport().teleport(p, name, null);
