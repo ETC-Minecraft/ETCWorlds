@@ -14,6 +14,10 @@
 #       skyblock_main/
 worlds-folder: "mundos"
 
+# Mundo al que apunta /lobby. Si ETCCore también está instalado, ETCWorlds
+# toma el control de /lobby y /spawn para añadir soporte multi-mundo.
+lobby-world: "lobby"
+
 # Mundos que SIEMPRE deben estar cargados (no se descargan aunque queden vacíos).
 keep-loaded:
   - "world"
@@ -78,4 +82,7 @@ messages:
   teleport-success: "&aTe teletransportaste a &f{world}&a."
   teleport-denied: "&cNo tienes acceso a ese mundo."
   preload-timeout: "&7Aún cargando chunks, te teletransporto igual..."
+  # Mensajes de ejemplo al entrar/salir de un mundo (se configuran por mundo en etcworlds.yml del mundo)
+  # enter-message: "&eBienvenido a &f{world}&e!"
+  # exit-message: "&7Saliste de &f{world}&7."
   reload-done: "&aETCWorlds recargado."

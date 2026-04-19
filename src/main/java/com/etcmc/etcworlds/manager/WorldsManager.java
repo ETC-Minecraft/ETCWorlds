@@ -200,7 +200,33 @@ public class WorldsManager {
         applyRules(w, r);
         saveRules(name);
         saveRegistry();
+        saveToBukkitYml(name, folderPath, r);
         return w;
+    }
+
+    /**
+     * Escribe la entrada de generador en bukkit.yml para mundos con ChunkGenerator custom.
+     * Esto garantiza que al reiniciar el servidor, Bukkit llame a
+     * ETCWorlds.getDefaultWorldGenerator() para este mundo.
+     */
+    private void saveToBukkitYml(String name, String folderPath, WorldRules r) {
+        // Mundos vanilla no necesitan generador registrado
+        switch (r.template) {
+            case NORMAL, FLAT, AMPLIFIED, LARGE_BIOMES -> { return; }
+            default -> {}
+        }
+        try {
+            File serverRoot = Bukkit.getWorldContainer();
+            File bukkitFile = new File(serverRoot, "bukkit.yml");
+            if (!bukkitFile.exists()) return;
+            YamlConfiguration bukkit = YamlConfiguration.loadConfiguration(bukkitFile);
+            // Clave: la carpeta tal como WorldCreator la conoce (folderPath)
+            bukkit.set("worlds." + folderPath + ".generator", plugin.getName() + ":" + name);
+            bukkit.save(bukkitFile);
+            plugin.getLogger().info("[ETCWorlds] Generador custom registrado en bukkit.yml para '" + name + "'");
+        } catch (Exception e) {
+            plugin.getLogger().warning("[ETCWorlds] No se pudo actualizar bukkit.yml para '" + name + "': " + e.getMessage());
+        }
     }
 
     private World buildAndCreate(String name, String folderPath, WorldRules r) {
@@ -214,11 +240,21 @@ public class WorldsManager {
         if (gen != null) wc.generator(gen);
         BiomeProvider bp = biomeProviderFor(r);
         if (bp != null) wc.biomeProvider(bp);
+        // En Folia, Bukkit.createWorld() lanza UnsupportedOperationException de inmediato.
+        // Usamos el factory propio que reconstruye el ServerLevel vía NMS por reflection.
+        if (FoliaWorldFactory.isFolia()) {
+            try {
+                return FoliaWorldFactory.createWorld(plugin, wc);
+            } catch (Throwable foliaEx) {
+                plugin.getLogger().log(Level.WARNING,
+                        "[ETCWorlds] FoliaWorldFactory falló para '" + name + "'", foliaEx);
+                return null;
+            }
+        }
+
         try {
             return Bukkit.createWorld(wc);
         } catch (UnsupportedOperationException foliaEx) {
-            // Folia no permite cargar/crear mundos en tiempo real vía la API de Bukkit.
-            // Los mundos deben estar configurados para cargar al arrancar el servidor.
             plugin.getLogger().warning(
                 "[ETCWorlds] Folia no soporta carga de mundos en tiempo real. "
                 + "El mundo '" + name + "' está registrado pero NO cargado. "
@@ -319,7 +355,8 @@ public class WorldsManager {
         // Worldborder
         org.bukkit.WorldBorder wb = w.getWorldBorder();
         wb.setCenter(r.borderCenterX, r.borderCenterZ);
-        wb.setSize(r.borderSize);
+        double size = Math.max(1.0d, Math.min(r.borderSize, 5.9999968E7d));
+        wb.setSize(size);
     }
 
     // ===========================================================================================

@@ -34,6 +34,8 @@ public class WorldTpCommand implements CommandExecutor, TabCompleter {
             case "worldlist", "worlds", "mvlist" -> list(s);
             case "worldinfo", "winfo", "mvinfo" -> info(s, a);
             case "worldspawn", "setworldspawn", "wspawn" -> setSpawn(s);
+            case "spawn" -> spawnWorld(s);
+            case "lobby" -> lobbyWorld(s);
             default -> false;
         };
     }
@@ -95,6 +97,31 @@ public class WorldTpCommand implements CommandExecutor, TabCompleter {
         p.getWorld().setSpawnLocation(loc);
         plugin.worlds().saveRules(name);
         s.sendMessage(ChatColor.GREEN + "Spawn definido en " + name + ".");
+        return true;
+    }
+
+    /** /spawn — teletransporta al spawn del mundo actual del jugador. */
+    private boolean spawnWorld(CommandSender s) {
+        if (!s.hasPermission("etcworlds.spawn")) { s.sendMessage(ChatColor.RED + "Sin permiso."); return true; }
+        if (!(s instanceof Player p)) { s.sendMessage(ChatColor.RED + "Solo jugadores."); return true; }
+        String worldName = p.getWorld().getName();
+        WorldRules r = plugin.worlds().getRules(worldName);
+        Location spawn = r != null ? r.spawnLocation(p.getWorld()) : p.getWorld().getSpawnLocation();
+        plugin.lazyTeleport().teleport(p, worldName, spawn);
+        return true;
+    }
+
+    /** /lobby — teletransporta al mundo lobby configurado. */
+    private boolean lobbyWorld(CommandSender s) {
+        if (!s.hasPermission("etcworlds.lobby")) { s.sendMessage(ChatColor.RED + "Sin permiso."); return true; }
+        if (!(s instanceof Player p)) { s.sendMessage(ChatColor.RED + "Solo jugadores."); return true; }
+        String lobby = plugin.getConfig().getString("lobby-world", "");
+        if (lobby.isBlank()) {
+            p.sendMessage(ChatColor.RED + "[ETCWorlds] No hay lobby configurado. "
+                    + "Define 'lobby-world: <nombre>' en config.yml");
+            return true;
+        }
+        plugin.lazyTeleport().teleport(p, lobby, null);
         return true;
     }
 

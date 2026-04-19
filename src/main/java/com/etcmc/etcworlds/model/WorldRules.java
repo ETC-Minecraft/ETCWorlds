@@ -76,6 +76,10 @@ public class WorldRules {
     // === Backups ===
     public boolean backupEnabled = true;
 
+    // === Mensajes al entrar/salir ===
+    public String enterMessage = ""; // mensaje al entrar al mundo. {world} = nombre
+    public String exitMessage  = ""; // mensaje al salir del mundo. {world} = nombre
+
     public static WorldRules fromConfig(String name, ConfigurationSection s) {
         WorldRules r = new WorldRules();
         r.name = name;
@@ -151,6 +155,8 @@ public class WorldRules {
         r.commandWhitelist = new ArrayList<>(s.getStringList("commands.whitelist"));
         r.commandBlacklist = new ArrayList<>(s.getStringList("commands.blacklist"));
         r.backupEnabled = s.getBoolean("backup.enabled", true);
+        r.enterMessage = s.getString("messages.enter", "");
+        r.exitMessage  = s.getString("messages.exit",  "");
 
         return r;
     }
@@ -210,6 +216,8 @@ public class WorldRules {
         s.set("commands.whitelist", commandWhitelist);
         s.set("commands.blacklist", commandBlacklist);
         s.set("backup.enabled", backupEnabled);
+        if (!enterMessage.isEmpty()) s.set("messages.enter", enterMessage);
+        if (!exitMessage.isEmpty())  s.set("messages.exit",  exitMessage);
     }
 
     public Location spawnLocation(World w) {

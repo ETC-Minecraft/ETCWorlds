@@ -35,6 +35,14 @@ commands:
     usage: /worldspawn
     aliases: [setworldspawn, wspawn]
     permission: etcworlds.spawn.set
+  spawn:
+    description: Teletransporte al spawn del mundo actual.
+    usage: /spawn
+    permission: etcworlds.spawn
+  lobby:
+    description: Teletransporte al mundo lobby.
+    usage: /lobby
+    permission: etcworlds.lobby
 
 permissions:
   etcworlds.admin:
@@ -57,6 +65,7 @@ permissions:
       etcworlds.spawn.set: true
       etcworlds.template: true
       etcworlds.gui: true
+      etcworlds.portal: true
   etcworlds.create:
     description: Crear nuevos mundos.
     default: op
@@ -113,4 +122,13 @@ permissions:
     default: op
   etcworlds.bypass.pvp:
     description: Ignora la regla PvP del mundo.
+    default: op
+  etcworlds.spawn:
+    description: Permite usar /spawn (ir al spawn del mundo actual).
+    default: true
+  etcworlds.lobby:
+    description: Permite usar /lobby.
+    default: true
+  etcworlds.portal:
+    description: Gestionar portales custom (/ecw portal ...).
     default: op

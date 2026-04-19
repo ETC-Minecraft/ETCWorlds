@@ -2,7 +2,9 @@ package com.etcmc.etcworlds.listener;
 
 import com.etcmc.etcworlds.ETCWorlds;
 import com.etcmc.etcworlds.model.WorldRules;
+import org.bukkit.ChatColor;
 import org.bukkit.GameMode;
+import org.bukkit.Location;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
@@ -11,16 +13,18 @@ import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.FoodLevelChangeEvent;
+import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.event.player.PlayerChangedWorldEvent;
 import org.bukkit.event.player.PlayerCommandPreprocessEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
+import org.bukkit.event.player.PlayerRespawnEvent;
 
 import java.util.Locale;
 
 /**
  * Aplica las reglas por-mundo a eventos del jugador:
- * gamemode forzado, fly forzado, build/break, fall-damage, hunger,
- * y filtro de comandos por mundo.
+ * gamemode forzado, fly forzado, build/break, fall-damage, hunger auto-fill,
+ * respawn en spawn del mundo, mensajes de entrada/salida, y filtro de comandos.
  */
 public class WorldRulesListener implements Listener {
 
@@ -35,7 +39,25 @@ public class WorldRulesListener implements Listener {
 
     @EventHandler
     public void onChangeWorld(PlayerChangedWorldEvent e) {
-        applyRulesTo(e.getPlayer());
+        Player p = e.getPlayer();
+        String fromName = e.getFrom().getName();
+        String toName   = p.getWorld().getName();
+
+        // Mensaje de salida del mundo anterior
+        WorldRules fromRules = plugin.worlds().getRules(fromName);
+        if (fromRules != null && fromRules.exitMessage != null && !fromRules.exitMessage.isEmpty()) {
+            p.sendMessage(ChatColor.translateAlternateColorCodes('&', fromRules.exitMessage
+                    .replace("{world}", fromName)));
+        }
+
+        applyRulesTo(p);
+
+        // Mensaje de entrada al nuevo mundo
+        WorldRules toRules = plugin.worlds().getRules(toName);
+        if (toRules != null && toRules.enterMessage != null && !toRules.enterMessage.isEmpty()) {
+            p.sendMessage(ChatColor.translateAlternateColorCodes('&', toRules.enterMessage
+                    .replace("{world}", toName)));
+        }
     }
 
     private void applyRulesTo(Player p) {
@@ -46,6 +68,25 @@ public class WorldRulesListener implements Listener {
             p.setGameMode(r.gamemode);
         if (r.fly && !p.getAllowFlight()) {
             p.setAllowFlight(true); p.setFlying(true);
+        }
+        // Rellenar hambre automáticamente si el mundo tiene hunger=false
+        if (!r.hunger) {
+            p.setFoodLevel(20);
+            p.setSaturation(20f);
+        }
+    }
+
+    /** Personaliza el punto de reaparición al morir en un mundo con spawn configurado. */
+    @EventHandler(priority = EventPriority.HIGH)
+    public void onRespawn(PlayerRespawnEvent e) {
+        if (e.isAnchorSpawn() || e.isBedSpawn()) return; // Respetar cama/anchor
+        Player p = e.getPlayer();
+        String worldName = p.getWorld().getName();
+        WorldRules r = plugin.worlds().getRules(worldName);
+        if (r == null) return;
+        Location spawn = r.spawnLocation(p.getWorld());
+        if (spawn != null) {
+            e.setRespawnLocation(spawn);
         }
     }
 

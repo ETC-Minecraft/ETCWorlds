@@ -6,12 +6,14 @@ import com.etcmc.etcworlds.gui.WorldsGUI;
 import com.etcmc.etcworlds.hook.ETCCoreHook;
 import com.etcmc.etcworlds.hook.PlaceholderHook;
 import com.etcmc.etcworlds.hook.RegionGenHook;
+import com.etcmc.etcworlds.listener.CustomPortalListener;
 import com.etcmc.etcworlds.listener.OneblockListener;
 import com.etcmc.etcworlds.listener.PortalLinkListener;
 import com.etcmc.etcworlds.listener.WorldAccessListener;
 import com.etcmc.etcworlds.listener.WorldGroupsListener;
 import com.etcmc.etcworlds.listener.WorldRulesListener;
 import com.etcmc.etcworlds.manager.BackupManager;
+import com.etcmc.etcworlds.manager.CustomPortalManager;
 import com.etcmc.etcworlds.manager.IdleWorldUnloader;
 import com.etcmc.etcworlds.manager.InstanceManager;
 import com.etcmc.etcworlds.manager.LazyTeleportService;
@@ -38,6 +40,7 @@ public final class ETCWorlds extends JavaPlugin {
     private InstanceManager instanceManager;
     private TemplateCloneService templateCloneService;
     private WorldsGUI worldsGUI;
+    private CustomPortalManager customPortalManager;
 
     public static ETCWorlds get() {
         return instance;
@@ -67,13 +70,18 @@ public final class ETCWorlds extends JavaPlugin {
         this.instanceManager = new InstanceManager(this);
         this.templateCloneService = new TemplateCloneService(this);
         this.worldsGUI = new WorldsGUI(this);
+        this.customPortalManager = new CustomPortalManager(this);
+        this.customPortalManager.load();
 
         // Comandos
         bind("etcworlds", new WorldsCommand(this));
-        bind("world", new WorldTpCommand(this));
-        bind("worldlist", new WorldTpCommand(this));   // delega list
-        bind("worldinfo", new WorldTpCommand(this));   // delega info
-        bind("worldspawn", new WorldTpCommand(this));  // delega setspawn
+        WorldTpCommand tpCmd = new WorldTpCommand(this);
+        bind("world", tpCmd);
+        bind("worldlist", tpCmd);
+        bind("worldinfo", tpCmd);
+        bind("worldspawn", tpCmd);
+        bind("spawn", tpCmd);
+        bind("lobby", tpCmd);
 
         // Listeners
         Bukkit.getPluginManager().registerEvents(new PortalLinkListener(this), this);
@@ -81,6 +89,7 @@ public final class ETCWorlds extends JavaPlugin {
         Bukkit.getPluginManager().registerEvents(new WorldAccessListener(this), this);
         Bukkit.getPluginManager().registerEvents(new WorldGroupsListener(this), this);
         Bukkit.getPluginManager().registerEvents(new OneblockListener(this), this);
+        Bukkit.getPluginManager().registerEvents(new CustomPortalListener(this), this);
         Bukkit.getPluginManager().registerEvents(this.worldsGUI, this);
 
         // Tareas periódicas
@@ -141,4 +150,5 @@ public final class ETCWorlds extends JavaPlugin {
     public InstanceManager instances() { return instanceManager; }
     public TemplateCloneService templates() { return templateCloneService; }
     public WorldsGUI gui() { return worldsGUI; }
+    public CustomPortalManager portals() { return customPortalManager; }
 }
