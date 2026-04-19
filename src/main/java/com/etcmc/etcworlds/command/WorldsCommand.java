@@ -68,7 +68,8 @@ public class WorldsCommand implements CommandExecutor, TabCompleter {
                 case "backup" -> backup(s, a);
                 case "set" -> set(s, a);
                 case "link" -> link(s, a);
-                case "spawn", "setspawn" -> setSpawn(s, a);
+                case "setspawn", "spawn" -> setSpawn(s, a);
+                case "setlobby" -> setLobby(s, a);
                 case "reload" -> reload(s);
                 case "list" -> { list(s); yield true; }
                 case "info" -> info(s, a);
@@ -352,7 +353,27 @@ public class WorldsCommand implements CommandExecutor, TabCompleter {
         plugin.worlds().saveRules(name);
         World w = Bukkit.getWorld(name);
         if (w != null) w.setSpawnLocation(loc);
-        s.sendMessage(ChatColor.GREEN + "Spawn de " + name + " definido.");
+        s.sendMessage(ChatColor.GREEN + "Spawn de " + name + " definido en " + fmt(loc) + ".");
+        return true;
+    }
+
+    /** /ecw setlobby [world] - Guarda el mundo lobby en config.yml. */
+    private boolean setLobby(CommandSender s, String[] a) {
+        if (!s.hasPermission("etcworlds.spawn.set")) { noPerm(s); return true; }
+        String name;
+        if (a.length >= 2) name = a[1];
+        else if (s instanceof Player p) name = p.getWorld().getName();
+        else { s.sendMessage(ChatColor.RED + "Uso: /ecw setlobby <mundo>"); return true; }
+        World w = Bukkit.getWorld(name);
+        String resolved = plugin.worlds().resolveWorldName(name);
+        if (w == null && resolved == null) {
+            s.sendMessage(ChatColor.RED + "Mundo '" + name + "' no encontrado o no registrado.");
+            return true;
+        }
+        String finalName = resolved != null ? resolved : name;
+        plugin.getConfig().set("lobby-world", finalName);
+        plugin.saveConfig();
+        s.sendMessage(ChatColor.GREEN + "Lobby definido a '" + finalName + "'. /lobby ahora apunta aqui.");
         return true;
     }
 
@@ -628,7 +649,8 @@ public class WorldsCommand implements CommandExecutor, TabCompleter {
         s.sendMessage(ChatColor.YELLOW + "/etcworlds backup <name>");
         s.sendMessage(ChatColor.YELLOW + "/etcworlds set <world> <prop> <val>");
         s.sendMessage(ChatColor.YELLOW + "/etcworlds link <world> <nether|end> <target|none>");
-        s.sendMessage(ChatColor.YELLOW + "/etcworlds spawn [world]");
+        s.sendMessage(ChatColor.YELLOW + "/etcworlds setspawn [world]   - Define spawn del mundo");
+        s.sendMessage(ChatColor.YELLOW + "/etcworlds setlobby [world]   - Define mundo lobby (config.yml)");
         s.sendMessage(ChatColor.YELLOW + "/etcworlds tp [player] <world>");
         s.sendMessage(ChatColor.YELLOW + "/etcworlds list / info / templates / reload");
         s.sendMessage(ChatColor.YELLOW + "/etcworlds gui / clone / instance / pregen / seeds");
@@ -654,13 +676,14 @@ public class WorldsCommand implements CommandExecutor, TabCompleter {
     @Override
     public List<String> onTabComplete(@NotNull CommandSender s, @NotNull Command c, @NotNull String l, @NotNull String[] a) {
         if (a.length == 1) return List.of("create","delete","load","unload","import","importzip","export","backup",
-                "set","link","spawn","reload","list","info","tp","templates","gui","clone","instance","pregen","seeds",
+                "set","link","setspawn","setlobby","reload","list","info","tp","templates","gui","clone","instance","pregen","seeds",
                 "status","gamerule","portal","tpall","help").stream()
                 .filter(x -> x.startsWith(a[0].toLowerCase())).toList();
         if (a.length == 2 && (a[0].equalsIgnoreCase("delete") || a[0].equalsIgnoreCase("load")
                 || a[0].equalsIgnoreCase("unload") || a[0].equalsIgnoreCase("export")
                 || a[0].equalsIgnoreCase("backup") || a[0].equalsIgnoreCase("info")
-                || a[0].equalsIgnoreCase("spawn") || a[0].equalsIgnoreCase("set")
+                || a[0].equalsIgnoreCase("setspawn") || a[0].equalsIgnoreCase("spawn")
+                || a[0].equalsIgnoreCase("setlobby") || a[0].equalsIgnoreCase("set")
                 || a[0].equalsIgnoreCase("link") || a[0].equalsIgnoreCase("tp")))
             return new ArrayList<>(plugin.worlds().getManagedNames());
         if (a.length == 3 && a[0].equalsIgnoreCase("create"))
