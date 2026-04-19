@@ -39,7 +39,7 @@ public class WorldRulesListener implements Listener {
         applyRulesTo(e.getPlayer());
     }
 
-    @EventHandler
+    @EventHandler(priority = EventPriority.MONITOR)
     public void onChangeWorld(PlayerChangedWorldEvent e) {
         Player p = e.getPlayer();
         // Mensaje de salida del mundo anterior
@@ -47,7 +47,16 @@ public class WorldRulesListener implements Listener {
         if (old != null && !old.exitMessage.isEmpty())
             p.sendMessage(ChatColor.translateAlternateColorCodes('&',
                     old.exitMessage.replace("{world}", e.getFrom().getName())));
+        // Aplicar reglas en el mismo tick (gamemode si aplica)
         applyRulesTo(p);
+        // Reaplicar 1 tick despues para sobrevivir al WorldGroupsListener (MONITOR),
+        // que carga el snapshot del grupo y llama setGameMode -> resetea allowFlight.
+        try {
+            p.getScheduler().runDelayed(plugin, t -> applyFlyAndHunger(p), null, 2L);
+        } catch (Throwable ignored) {
+            // Fallback no-Folia
+            org.bukkit.Bukkit.getScheduler().runTaskLater(plugin, () -> applyFlyAndHunger(p), 2L);
+        }
         // Mensaje de entrada al nuevo mundo
         WorldRules next = plugin.worlds().getRules(p.getWorld().getName());
         if (next != null && !next.enterMessage.isEmpty())
@@ -70,8 +79,25 @@ public class WorldRulesListener implements Listener {
         if (r.gamemode != null && p.getGameMode() != r.gamemode
                 && !p.hasPermission("etcworlds.bypass.gamemode"))
             p.setGameMode(r.gamemode);
-        if (r.fly && !p.getAllowFlight()) {
-            p.setAllowFlight(true); p.setFlying(true);
+        applyFlyAndHunger(p);
+    }
+
+    /**
+     * Aplica fly y hunger del mundo actual. Se llama tambien con delay desde
+     * onChangeWorld para sobrevivir al setGameMode() que hace WorldGroupsListener
+     * a prioridad MONITOR (que resetea allowFlight=false).
+     */
+    private void applyFlyAndHunger(Player p) {
+        if (!p.isOnline()) return;
+        WorldRules r = plugin.worlds().getRules(p.getWorld().getName());
+        if (r == null) return;
+        GameMode gm = p.getGameMode();
+        boolean alwaysFlying = gm == GameMode.CREATIVE || gm == GameMode.SPECTATOR;
+        if (r.fly) {
+            if (!p.getAllowFlight()) p.setAllowFlight(true);
+        } else if (!alwaysFlying) {
+            if (p.getAllowFlight()) p.setAllowFlight(false);
+            if (p.isFlying()) p.setFlying(false);
         }
         // Hunger auto-fill al entrar si hunger=false
         if (!r.hunger) {
@@ -85,6 +111,7 @@ public class WorldRulesListener implements Listener {
         Player p = e.getPlayer();
         String world = p.getWorld().getName();
         if (denyPocketBuild(p, world)) { e.setCancelled(true); return; }
+        if (isPocketTrusted(p, world)) return; // owner/users del PW saltan reglas de mundo
         WorldRules r = plugin.worlds().getRules(world);
         if (r != null && !r.buildEnabled && !p.hasPermission("etcworlds.bypass.access"))
             e.setCancelled(true);
@@ -95,6 +122,7 @@ public class WorldRulesListener implements Listener {
         Player p = e.getPlayer();
         String world = p.getWorld().getName();
         if (denyPocketBuild(p, world)) { e.setCancelled(true); return; }
+        if (isPocketTrusted(p, world)) return;
         WorldRules r = plugin.worlds().getRules(world);
         if (r != null && !r.buildEnabled && !p.hasPermission("etcworlds.bypass.access"))
             e.setCancelled(true);
@@ -130,6 +158,8 @@ public class WorldRulesListener implements Listener {
                 e.setCancelled(true);
                 return;
             }
+            // Owner/users del PW saltan la regla interactEnabled del mundo.
+            if (isPocketTrusted(p, world)) return;
         }
         // Mundos no-pocket: usar regla global
         WorldRules r = plugin.worlds().getRules(world);
@@ -181,6 +211,20 @@ public class WorldRulesListener implements Listener {
     }
 
     private final java.util.Map<java.util.UUID, Long> lastDenyMsg = new java.util.concurrent.ConcurrentHashMap<>();
+
+    /**
+     * Devuelve true si el mundo es un pocketworld y el jugador es DUENO o esta en
+     * la lista de "users" (anadido con /pw useradd). Estos jugadores saltan las
+     * reglas de mundo para build/interact/buckets.
+     * Para mundos no-pocket retorna false.
+     */
+    private boolean isPocketTrusted(Player p, String world) {
+        if (plugin.pocketWorlds() == null) return false;
+        if (!plugin.pocketWorlds().isPocketWorld(world)) return false;
+        java.util.UUID owner = plugin.pocketWorlds().getOwnerOf(world);
+        if (owner == null) return false;
+        return plugin.pocketWorlds().isUser(owner, p.getUniqueId());
+    }
 
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void onDamage(EntityDamageEvent e) {

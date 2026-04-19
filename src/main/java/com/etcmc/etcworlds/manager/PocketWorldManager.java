@@ -206,6 +206,12 @@ public class PocketWorldManager {
         return o != null ? byOwner.get(o) : null;
     }
 
+    /** UUID del dueno del pocketworld con ese folder, o null si no es pocket. */
+    public UUID getOwnerOf(String worldName) {
+        if (worldName == null) return null;
+        return byWorldName.get(worldName.toLowerCase());
+    }
+
     public boolean exists(UUID owner) { return byOwner.containsKey(owner); }
 
     public Collection<PocketWorld> all() { return Collections.unmodifiableCollection(byOwner.values()); }
