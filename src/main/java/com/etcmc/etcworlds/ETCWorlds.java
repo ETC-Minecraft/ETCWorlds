@@ -1,5 +1,6 @@
 package com.etcmc.etcworlds;
 
+import com.etcmc.etcworlds.command.PocketWorldCommand;
 import com.etcmc.etcworlds.command.WorldTpCommand;
 import com.etcmc.etcworlds.command.WorldsCommand;
 import com.etcmc.etcworlds.gui.WorldsGUI;
@@ -17,6 +18,7 @@ import com.etcmc.etcworlds.manager.CustomPortalManager;
 import com.etcmc.etcworlds.manager.IdleWorldUnloader;
 import com.etcmc.etcworlds.manager.InstanceManager;
 import com.etcmc.etcworlds.manager.LazyTeleportService;
+import com.etcmc.etcworlds.manager.PocketWorldManager;
 import com.etcmc.etcworlds.manager.TemplateCloneService;
 import com.etcmc.etcworlds.manager.WorldGroupsManager;
 import com.etcmc.etcworlds.manager.WorldsManager;
@@ -41,6 +43,7 @@ public final class ETCWorlds extends JavaPlugin {
     private TemplateCloneService templateCloneService;
     private WorldsGUI worldsGUI;
     private CustomPortalManager customPortalManager;
+    private PocketWorldManager pocketWorldManager;
 
     public static ETCWorlds get() {
         return instance;
@@ -72,6 +75,8 @@ public final class ETCWorlds extends JavaPlugin {
         this.worldsGUI = new WorldsGUI(this);
         this.customPortalManager = new CustomPortalManager(this);
         this.customPortalManager.load();
+        this.pocketWorldManager = new PocketWorldManager(this);
+        this.pocketWorldManager.load();
 
         // Comandos
         bind("etcworlds", new WorldsCommand(this));
@@ -82,6 +87,7 @@ public final class ETCWorlds extends JavaPlugin {
         bind("worldspawn", tpCmd);
         bind("spawn", tpCmd);
         bind("lobby", tpCmd);
+        bind("pocketworld", new PocketWorldCommand(this));
 
         // Listeners
         Bukkit.getPluginManager().registerEvents(new PortalLinkListener(this), this);
@@ -113,6 +119,7 @@ public final class ETCWorlds extends JavaPlugin {
     public void onDisable() {
         if (idleWorldUnloader != null) idleWorldUnloader.stop();
         if (backupManager != null) backupManager.stop();
+        if (pocketWorldManager != null) pocketWorldManager.save();
         if (worldsManager != null) worldsManager.shutdown();
     }
 
@@ -151,4 +158,5 @@ public final class ETCWorlds extends JavaPlugin {
     public TemplateCloneService templates() { return templateCloneService; }
     public WorldsGUI gui() { return worldsGUI; }
     public CustomPortalManager portals() { return customPortalManager; }
+    public PocketWorldManager pocketWorlds() { return pocketWorldManager; }
 }

@@ -14,6 +14,7 @@
 #       skyblock_main/
 worlds-folder: "mundos"
 
+# === Mundo lobby ===
 # Mundo al que apunta /lobby. Si ETCCore esta instalado, ETCWorlds toma automaticamente
 # el control de /spawn y /lobby para ofrecer soporte multi-mundo.
 lobby-world: "lobby"
@@ -67,6 +68,20 @@ safe-teleport:
   search-radius: 8
   # Acción si no encuentra ubicación segura: TELEPORT (igual), CANCEL, SPAWN.
   on-unsafe: TELEPORT
+
+# === PocketWorlds (mundos personales privados) ===
+# Cada jugador puede crear UN mundo personal de tipo Void con worldborder
+# limitada. Se accede con /pw (alias /pocketworld /mundo /isla).
+pocketworlds:
+  enabled: true
+  # Tamano del worldborder centrado en (0,0). 1000 = area de 1000x1000 bloques.
+  border-size: 1000
+  # Si el jugador tiene fly automatico al entrar a su pocketworld.
+  fly: true
+  # Si el dano por caida esta activado.
+  fall-damage: false
+  # Mensaje al entrar. {player} = nombre.
+  enter-message: "&aBienvenido a tu PocketWorld, &e{player}&a."
 
 # === Mensajes ===
 messages:

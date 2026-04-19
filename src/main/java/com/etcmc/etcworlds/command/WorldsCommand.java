@@ -84,6 +84,15 @@ public class WorldsCommand implements CommandExecutor, TabCompleter {
                 case "gamerule", "gr" -> gamerule(s, a);
                 case "portal" -> portal(s, a);
                 case "tpall", "teleportall" -> tpall(s, a);
+                case "seed" -> seedShow(s, a);
+                case "weather" -> weather(s, a);
+                case "time" -> time(s, a);
+                case "pvp" -> pvp(s, a);
+                case "difficulty", "diff" -> difficulty(s, a);
+                case "save" -> save(s, a);
+                case "fly" -> fly(s, a);
+                case "motd" -> motd(s, a);
+                case "pw", "pocketworld" -> pocketworld(s, a);
                 default -> { help(s); yield true; }
             };
         } catch (Exception ex) {
@@ -658,6 +667,15 @@ public class WorldsCommand implements CommandExecutor, TabCompleter {
         s.sendMessage(ChatColor.YELLOW + "/etcworlds gamerule <world> <rule> <value>");
         s.sendMessage(ChatColor.YELLOW + "/etcworlds portal create|delete|list|tp");
         s.sendMessage(ChatColor.YELLOW + "/etcworlds tpall <world>");
+        s.sendMessage(ChatColor.YELLOW + "/etcworlds seed [world]                       - Muestra la semilla");
+        s.sendMessage(ChatColor.YELLOW + "/etcworlds weather <world> <clear|rain|thunder> [seg]");
+        s.sendMessage(ChatColor.YELLOW + "/etcworlds time <world> <day|night|noon|midnight|tick>");
+        s.sendMessage(ChatColor.YELLOW + "/etcworlds pvp <world> <on|off>");
+        s.sendMessage(ChatColor.YELLOW + "/etcworlds difficulty <world> <peaceful|easy|normal|hard>");
+        s.sendMessage(ChatColor.YELLOW + "/etcworlds save <world>                       - Fuerza world.save()");
+        s.sendMessage(ChatColor.YELLOW + "/etcworlds fly <world> <on|off>               - Fly automatico al entrar");
+        s.sendMessage(ChatColor.YELLOW + "/etcworlds motd <world> <texto>               - Mensaje al entrar");
+        s.sendMessage(ChatColor.YELLOW + "/etcworlds pw [sub]                           - PocketWorlds (alias /pw)");
     }
 
     private void noPerm(CommandSender s) {
@@ -677,7 +695,7 @@ public class WorldsCommand implements CommandExecutor, TabCompleter {
     public List<String> onTabComplete(@NotNull CommandSender s, @NotNull Command c, @NotNull String l, @NotNull String[] a) {
         if (a.length == 1) return List.of("create","delete","load","unload","import","importzip","export","backup",
                 "set","link","setspawn","setlobby","reload","list","info","tp","templates","gui","clone","instance","pregen","seeds",
-                "status","gamerule","portal","tpall","help").stream()
+                "status","gamerule","portal","tpall","seed","weather","time","pvp","difficulty","save","fly","motd","pw","help").stream()
                 .filter(x -> x.startsWith(a[0].toLowerCase())).toList();
         if (a.length == 2 && (a[0].equalsIgnoreCase("delete") || a[0].equalsIgnoreCase("load")
                 || a[0].equalsIgnoreCase("unload") || a[0].equalsIgnoreCase("export")
@@ -692,6 +710,178 @@ public class WorldsCommand implements CommandExecutor, TabCompleter {
             return Arrays.stream(World.Environment.values()).map(Enum::name).toList();
         if (a.length == 3 && a[0].equalsIgnoreCase("link"))
             return List.of("nether", "end");
+        if (a.length == 2 && (a[0].equalsIgnoreCase("seed") || a[0].equalsIgnoreCase("weather")
+                || a[0].equalsIgnoreCase("time") || a[0].equalsIgnoreCase("pvp")
+                || a[0].equalsIgnoreCase("difficulty") || a[0].equalsIgnoreCase("diff")
+                || a[0].equalsIgnoreCase("save") || a[0].equalsIgnoreCase("fly")
+                || a[0].equalsIgnoreCase("motd")))
+            return new ArrayList<>(plugin.worlds().getManagedNames());
+        if (a.length == 3 && a[0].equalsIgnoreCase("weather"))
+            return List.of("clear", "rain", "thunder");
+        if (a.length == 3 && a[0].equalsIgnoreCase("time"))
+            return List.of("day", "night", "noon", "midnight");
+        if (a.length == 3 && (a[0].equalsIgnoreCase("pvp") || a[0].equalsIgnoreCase("fly")))
+            return List.of("on", "off");
+        if (a.length == 3 && (a[0].equalsIgnoreCase("difficulty") || a[0].equalsIgnoreCase("diff")))
+            return List.of("peaceful", "easy", "normal", "hard");
         return List.of();
+    }
+
+    // -------------------------------------------------------------------------------------------
+    //   NUEVOS SUBCOMANDOS UTILITARIOS
+    // -------------------------------------------------------------------------------------------
+
+    /** /ecw seed [world] - Muestra la semilla del mundo. */
+    private boolean seedShow(CommandSender s, String[] a) {
+        if (!s.hasPermission("etcworlds.info")) { noPerm(s); return true; }
+        String name;
+        if (a.length >= 2) name = a[1];
+        else if (s instanceof Player p) name = p.getWorld().getName();
+        else { s.sendMessage(ChatColor.YELLOW + "Uso: /ecw seed <world>"); return true; }
+        World w = Bukkit.getWorld(name);
+        if (w == null) { s.sendMessage(ChatColor.RED + "Mundo no cargado: " + name); return true; }
+        s.sendMessage(ChatColor.GOLD + "Seed de " + ChatColor.YELLOW + w.getName() + ChatColor.GOLD + ": "
+                + ChatColor.WHITE + w.getSeed());
+        return true;
+    }
+
+    /** /ecw weather <world> <clear|rain|thunder> [duration-seconds] */
+    private boolean weather(CommandSender s, String[] a) {
+        if (!s.hasPermission("etcworlds.set")) { noPerm(s); return true; }
+        if (a.length < 3) {
+            s.sendMessage(ChatColor.YELLOW + "Uso: /ecw weather <world> <clear|rain|thunder> [seg]");
+            return true;
+        }
+        World w = Bukkit.getWorld(a[1]);
+        if (w == null) { s.sendMessage(ChatColor.RED + "Mundo no cargado: " + a[1]); return true; }
+        int durationTicks = a.length >= 4 ? safeInt(a[3], 600) * 20 : 6000;
+        switch (a[2].toLowerCase(Locale.ROOT)) {
+            case "clear", "sun" -> {
+                w.setStorm(false); w.setThundering(false);
+                w.setClearWeatherDuration(durationTicks);
+            }
+            case "rain" -> {
+                w.setStorm(true); w.setThundering(false);
+                w.setWeatherDuration(durationTicks);
+            }
+            case "thunder", "storm" -> {
+                w.setStorm(true); w.setThundering(true);
+                w.setWeatherDuration(durationTicks);
+                w.setThunderDuration(durationTicks);
+            }
+            default -> { s.sendMessage(ChatColor.RED + "Tipo invalido. Usa clear|rain|thunder."); return true; }
+        }
+        s.sendMessage(ChatColor.GREEN + "Clima de " + a[1] + " cambiado a " + a[2] + ".");
+        return true;
+    }
+
+    /** /ecw time <world> <day|night|noon|midnight|tick> */
+    private boolean time(CommandSender s, String[] a) {
+        if (!s.hasPermission("etcworlds.set")) { noPerm(s); return true; }
+        if (a.length < 3) {
+            s.sendMessage(ChatColor.YELLOW + "Uso: /ecw time <world> <day|night|noon|midnight|tick>");
+            return true;
+        }
+        World w = Bukkit.getWorld(a[1]);
+        if (w == null) { s.sendMessage(ChatColor.RED + "Mundo no cargado: " + a[1]); return true; }
+        long t;
+        switch (a[2].toLowerCase(Locale.ROOT)) {
+            case "day" -> t = 1000;
+            case "noon" -> t = 6000;
+            case "night" -> t = 13000;
+            case "midnight" -> t = 18000;
+            default -> {
+                try { t = Long.parseLong(a[2]); }
+                catch (NumberFormatException ex) { s.sendMessage(ChatColor.RED + "Valor invalido."); return true; }
+            }
+        }
+        w.setTime(t);
+        s.sendMessage(ChatColor.GREEN + "Hora de " + a[1] + " = " + t + ".");
+        return true;
+    }
+
+    /** /ecw pvp <world> <on|off> - atajo de /ecw set <w> pvp <bool> */
+    private boolean pvp(CommandSender s, String[] a) {
+        if (!s.hasPermission("etcworlds.set")) { noPerm(s); return true; }
+        if (a.length < 3) { s.sendMessage(ChatColor.YELLOW + "Uso: /ecw pvp <world> <on|off>"); return true; }
+        WorldRules r = plugin.worlds().getRules(a[1]);
+        if (r == null) { s.sendMessage(ChatColor.RED + "Mundo no registrado."); return true; }
+        boolean on = a[2].equalsIgnoreCase("on") || a[2].equalsIgnoreCase("true");
+        r.pvp = on;
+        plugin.worlds().saveRules(a[1]);
+        World w = Bukkit.getWorld(a[1]);
+        if (w != null) w.setPVP(on);
+        s.sendMessage(ChatColor.GREEN + "PvP en " + a[1] + " = " + (on ? "ON" : "OFF"));
+        return true;
+    }
+
+    /** /ecw difficulty <world> <peaceful|easy|normal|hard> */
+    private boolean difficulty(CommandSender s, String[] a) {
+        if (!s.hasPermission("etcworlds.set")) { noPerm(s); return true; }
+        if (a.length < 3) { s.sendMessage(ChatColor.YELLOW + "Uso: /ecw difficulty <world> <peaceful|easy|normal|hard>"); return true; }
+        World w = Bukkit.getWorld(a[1]);
+        if (w == null) { s.sendMessage(ChatColor.RED + "Mundo no cargado: " + a[1]); return true; }
+        try {
+            org.bukkit.Difficulty d = org.bukkit.Difficulty.valueOf(a[2].toUpperCase(Locale.ROOT));
+            w.setDifficulty(d);
+            s.sendMessage(ChatColor.GREEN + "Dificultad de " + a[1] + " = " + d + ".");
+        } catch (IllegalArgumentException ex) {
+            s.sendMessage(ChatColor.RED + "Dificultad invalida.");
+        }
+        return true;
+    }
+
+    /** /ecw save <world> - fuerza world.save() en el hilo correcto. */
+    private boolean save(CommandSender s, String[] a) {
+        if (!s.hasPermission("etcworlds.admin")) { noPerm(s); return true; }
+        if (a.length < 2) { s.sendMessage(ChatColor.YELLOW + "Uso: /ecw save <world>"); return true; }
+        World w = Bukkit.getWorld(a[1]);
+        if (w == null) { s.sendMessage(ChatColor.RED + "Mundo no cargado: " + a[1]); return true; }
+        s.sendMessage(ChatColor.GRAY + "Guardando " + a[1] + "...");
+        Bukkit.getGlobalRegionScheduler().run(plugin, t -> {
+            try { w.save(); s.sendMessage(ChatColor.GREEN + "Guardado: " + a[1]); }
+            catch (Exception ex) { s.sendMessage(ChatColor.RED + "Error: " + ex.getMessage()); }
+        });
+        return true;
+    }
+
+    /** /ecw fly <world> <on|off> - atajo del campo fly. */
+    private boolean fly(CommandSender s, String[] a) {
+        if (!s.hasPermission("etcworlds.set")) { noPerm(s); return true; }
+        if (a.length < 3) { s.sendMessage(ChatColor.YELLOW + "Uso: /ecw fly <world> <on|off>"); return true; }
+        WorldRules r = plugin.worlds().getRules(a[1]);
+        if (r == null) { s.sendMessage(ChatColor.RED + "Mundo no registrado."); return true; }
+        boolean on = a[2].equalsIgnoreCase("on") || a[2].equalsIgnoreCase("true");
+        r.fly = on;
+        plugin.worlds().saveRules(a[1]);
+        s.sendMessage(ChatColor.GREEN + "Fly automatico en " + a[1] + " = " + (on ? "ON" : "OFF"));
+        return true;
+    }
+
+    /** /ecw motd <world> <texto...> - alias amigable de enter-message. */
+    private boolean motd(CommandSender s, String[] a) {
+        if (!s.hasPermission("etcworlds.set")) { noPerm(s); return true; }
+        if (a.length < 3) { s.sendMessage(ChatColor.YELLOW + "Uso: /ecw motd <world> <texto...>"); return true; }
+        WorldRules r = plugin.worlds().getRules(a[1]);
+        if (r == null) { s.sendMessage(ChatColor.RED + "Mundo no registrado."); return true; }
+        StringBuilder sb = new StringBuilder();
+        for (int i = 2; i < a.length; i++) { if (i > 2) sb.append(' '); sb.append(a[i]); }
+        r.enterMessage = sb.toString();
+        plugin.worlds().saveRules(a[1]);
+        s.sendMessage(ChatColor.GREEN + "MOTD de " + a[1] + " = " + ChatColor.translateAlternateColorCodes('&', r.enterMessage));
+        return true;
+    }
+
+    /** /ecw pw [sub...] - delega al PocketWorldCommand. */
+    private boolean pocketworld(CommandSender s, String[] a) {
+        // Reempaqueta args quitando "pw"/"pocketworld" inicial
+        String[] sub = a.length <= 1 ? new String[0] : Arrays.copyOfRange(a, 1, a.length);
+        // Construimos un delegate liviano: invocamos directamente el PocketWorldCommand
+        PocketWorldCommand pwc = new PocketWorldCommand(plugin);
+        return pwc.onCommand(s, null, "pw", sub);
+    }
+
+    private static int safeInt(String v, int def) {
+        try { return Integer.parseInt(v); } catch (Exception ex) { return def; }
     }
 }

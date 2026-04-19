@@ -43,6 +43,11 @@ commands:
     description: Teletransporte al mundo lobby.
     usage: /lobby
     permission: etcworlds.lobby
+  pocketworld:
+    description: Gestiona tu PocketWorld personal (mundo Void privado).
+    usage: /pocketworld [sub]
+    aliases: [pw, mundo, isla]
+    permission: etcworlds.pw
 
 permissions:
   etcworlds.admin:
@@ -131,4 +136,22 @@ permissions:
     default: true
   etcworlds.portal:
     description: Gestionar portales custom (/ecw portal ...).
+    default: op
+  etcworlds.pw:
+    description: Usar /pw (gestionar tu PocketWorld personal).
+    default: true
+  etcworlds.pw.create:
+    description: Crear tu propio PocketWorld.
+    default: true
+  etcworlds.pw.reset:
+    description: Borrar y regenerar tu PocketWorld.
+    default: true
+  etcworlds.pw.visit:
+    description: Visitar el PocketWorld de otros jugadores que te invitaron.
+    default: true
+  etcworlds.pw.bypass:
+    description: Visitar cualquier PocketWorld sin invitacion.
+    default: op
+  etcworlds.pw.admin:
+    description: Borrar el PocketWorld de cualquier jugador.
     default: op
