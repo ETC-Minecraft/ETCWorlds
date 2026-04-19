@@ -17,9 +17,11 @@ import org.bukkit.event.player.PlayerBucketEmptyEvent;
 import org.bukkit.event.player.PlayerBucketFillEvent;
 import org.bukkit.event.player.PlayerChangedWorldEvent;
 import org.bukkit.event.player.PlayerCommandPreprocessEvent;
+import org.bukkit.event.player.PlayerGameModeChangeEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerRespawnEvent;
+import org.bukkit.event.player.PlayerTeleportEvent;
 
 import java.util.Locale;
 
@@ -49,19 +51,51 @@ public class WorldRulesListener implements Listener {
                     old.exitMessage.replace("{world}", e.getFrom().getName())));
         // Aplicar reglas en el mismo tick (gamemode si aplica)
         applyRulesTo(p);
-        // Reaplicar 1 tick despues para sobrevivir al WorldGroupsListener (MONITOR),
+        // Reaplicar varias veces para sobrevivir al WorldGroupsListener (MONITOR),
         // que carga el snapshot del grupo y llama setGameMode -> resetea allowFlight.
-        try {
-            p.getScheduler().runDelayed(plugin, t -> applyFlyAndHunger(p), null, 2L);
-        } catch (Throwable ignored) {
-            // Fallback no-Folia
-            org.bukkit.Bukkit.getScheduler().runTaskLater(plugin, () -> applyFlyAndHunger(p), 2L);
-        }
+        // Probamos a 2, 5 y 10 ticks por si Folia/algun plugin tarda en aplicar el gamemode.
+        scheduleReapply(p, 2L);
+        scheduleReapply(p, 5L);
+        scheduleReapply(p, 10L);
         // Mensaje de entrada al nuevo mundo
         WorldRules next = plugin.worlds().getRules(p.getWorld().getName());
         if (next != null && !next.enterMessage.isEmpty())
             p.sendMessage(ChatColor.translateAlternateColorCodes('&',
                     next.enterMessage.replace("{world}", p.getWorld().getName())));
+    }
+
+    /**
+     * Si algun plugin (incluido el nuestro WorldGroupsListener) cambia el gamemode
+     * del jugador, reaplicamos las reglas un tick despues para que el fly no se
+     * pierda. setGameMode() de Bukkit resetea allowFlight=false implicitamente.
+     */
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onGameModeChange(PlayerGameModeChangeEvent e) {
+        if (e.isCancelled()) return;
+        Player p = e.getPlayer();
+        scheduleReapply(p, 1L);
+        scheduleReapply(p, 5L);
+    }
+
+    /**
+     * Tras un teleport entre mundos tambien reaplicamos por seguridad
+     * (hay rutas que solo disparan TeleportEvent y no ChangedWorld a tiempo).
+     */
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onTeleport(PlayerTeleportEvent e) {
+        if (e.getFrom().getWorld() == null || e.getTo() == null || e.getTo().getWorld() == null) return;
+        if (e.getFrom().getWorld().equals(e.getTo().getWorld())) return;
+        Player p = e.getPlayer();
+        scheduleReapply(p, 5L);
+        scheduleReapply(p, 10L);
+    }
+
+    private void scheduleReapply(Player p, long delayTicks) {
+        try {
+            p.getScheduler().runDelayed(plugin, t -> applyFlyAndHunger(p), null, delayTicks);
+        } catch (Throwable ignored) {
+            org.bukkit.Bukkit.getScheduler().runTaskLater(plugin, () -> applyFlyAndHunger(p), delayTicks);
+        }
     }
 
     @EventHandler
@@ -94,10 +128,22 @@ public class WorldRulesListener implements Listener {
         GameMode gm = p.getGameMode();
         boolean alwaysFlying = gm == GameMode.CREATIVE || gm == GameMode.SPECTATOR;
         if (r.fly) {
-            if (!p.getAllowFlight()) p.setAllowFlight(true);
+            // Permitir vuelo SIEMPRE que la regla este activa, aun si Bukkit lo
+            // reseteo al cambiar de gamemode (allowFlight pasa a false en setGameMode).
+            p.setAllowFlight(true);
+            // Auto-fly al entrar (descripcion de la regla en PocketRulesGUI:
+            // "Otorga vuelo automatico al entrar"). Solo activamos el vuelo si
+            // el jugador no esta ya volando y no esta en gamemode que vuela solo.
+            if (!alwaysFlying && !p.isFlying()) {
+                try { p.setFlying(true); } catch (IllegalArgumentException ignored) {
+                    // setFlying(true) puede lanzar si allowFlight quedo en false por carrera; reintenta.
+                    p.setAllowFlight(true);
+                    try { p.setFlying(true); } catch (IllegalArgumentException ignored2) {}
+                }
+            }
         } else if (!alwaysFlying) {
-            if (p.getAllowFlight()) p.setAllowFlight(false);
             if (p.isFlying()) p.setFlying(false);
+            if (p.getAllowFlight()) p.setAllowFlight(false);
         }
         // Hunger auto-fill al entrar si hunger=false
         if (!r.hunger) {
