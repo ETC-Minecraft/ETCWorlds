@@ -76,7 +76,8 @@ public class WorldGroupsManager {
             p.getEnderChest().clear();
             p.setExp(0); p.setLevel(0);
             p.setFoodLevel(20); p.setSaturation(5);
-            var maxAttr = p.getAttribute(Attribute.GENERIC_MAX_HEALTH);
+            var maxAttr = p.getAttribute(org.bukkit.Registry.ATTRIBUTE.getOrThrow(
+                    org.bukkit.NamespacedKey.minecraft("generic.max_health")));
             if (maxAttr != null) p.setHealth(maxAttr.getValue());
             return;
         }
@@ -88,7 +89,8 @@ public class WorldGroupsManager {
         } catch (IOException ex) { plugin.getLogger().warning("Decode falló: " + ex); }
         p.setExp((float) y.getDouble("xp", 0));
         p.setLevel(y.getInt("level", 0));
-        var maxAttr = p.getAttribute(Attribute.GENERIC_MAX_HEALTH);
+        var maxAttr = p.getAttribute(org.bukkit.Registry.ATTRIBUTE.getOrThrow(
+                org.bukkit.NamespacedKey.minecraft("generic.max_health")));
         double max = maxAttr != null ? maxAttr.getValue() : 20.0;
         p.setHealth(Math.min(max, y.getDouble("health", max)));
         p.setFoodLevel(y.getInt("food", 20));
