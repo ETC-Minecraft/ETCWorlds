@@ -204,31 +204,6 @@ public class WorldsManager {
         return w;
     }
 
-    /**
-     * Escribe la entrada de generador en bukkit.yml para mundos con ChunkGenerator custom.
-     * Esto garantiza que al reiniciar el servidor, Bukkit llame a
-     * ETCWorlds.getDefaultWorldGenerator() para este mundo.
-     */
-    private void saveToBukkitYml(String name, String folderPath, WorldRules r) {
-        // Mundos vanilla no necesitan generador registrado
-        switch (r.template) {
-            case NORMAL, FLAT, AMPLIFIED, LARGE_BIOMES -> { return; }
-            default -> {}
-        }
-        try {
-            File serverRoot = Bukkit.getWorldContainer();
-            File bukkitFile = new File(serverRoot, "bukkit.yml");
-            if (!bukkitFile.exists()) return;
-            YamlConfiguration bukkit = YamlConfiguration.loadConfiguration(bukkitFile);
-            // Clave: la carpeta tal como WorldCreator la conoce (folderPath)
-            bukkit.set("worlds." + folderPath + ".generator", plugin.getName() + ":" + name);
-            bukkit.save(bukkitFile);
-            plugin.getLogger().info("[ETCWorlds] Generador custom registrado en bukkit.yml para '" + name + "'");
-        } catch (Exception e) {
-            plugin.getLogger().warning("[ETCWorlds] No se pudo actualizar bukkit.yml para '" + name + "': " + e.getMessage());
-        }
-    }
-
     private World buildAndCreate(String name, String folderPath, WorldRules r) {
         // WorldCreator acepta nombre con barras: usa esa ruta relativa al worldContainer.
         WorldCreator wc = new WorldCreator(folderPath);
@@ -270,6 +245,33 @@ public class WorldsManager {
             case LARGE_BIOMES -> WorldType.LARGE_BIOMES;
             default -> WorldType.NORMAL;
         };
+    }
+
+    /**
+     * Escribe la entrada del mundo en bukkit.yml para que el servidor lo cargue
+     * automáticamente al reiniciar y llame a getDefaultWorldGenerator().
+     * Solo se aplica cuando el mundo usa un generador custom (no templates Vanilla).
+     */
+    private void saveToBukkitYml(String name, String folderPath, WorldRules r) {
+        if (r.template == WorldTemplate.FLAT || r.template == WorldTemplate.AMPLIFIED
+                || r.template == WorldTemplate.LARGE_BIOMES || r.template == WorldTemplate.NORMAL) {
+            if (r.generatorId.isEmpty()) return; // sin generador custom, no es necesario
+        }
+        try {
+            File bukkitYml = new File(org.bukkit.Bukkit.getWorldContainer().getParent(), "bukkit.yml");
+            if (!bukkitYml.exists()) return;
+            org.bukkit.configuration.file.YamlConfiguration cfg =
+                    org.bukkit.configuration.file.YamlConfiguration.loadConfiguration(bukkitYml);
+            String key = "worlds." + folderPath + ".generator";
+            if (!cfg.contains(key)) {
+                String genValue = "ETCWorlds" + (r.generatorId.isEmpty() ? "" : ":" + r.generatorId);
+                cfg.set(key, genValue);
+                cfg.save(bukkitYml);
+                plugin.getLogger().info("[ETCWorlds] Registrado en bukkit.yml: " + key + " = " + genValue);
+            }
+        } catch (Exception ex) {
+            plugin.getLogger().warning("[ETCWorlds] No se pudo escribir bukkit.yml: " + ex.getMessage());
+        }
     }
 
     public synchronized boolean deleteWorld(String name) {

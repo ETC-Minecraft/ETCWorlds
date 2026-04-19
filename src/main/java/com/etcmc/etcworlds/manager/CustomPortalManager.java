@@ -7,26 +7,19 @@ import org.bukkit.configuration.file.YamlConfiguration;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * Gestiona los portales custom (bloques que teletransportan a otro mundo).
- * Se persisten en plugins/ETCWorlds/portals.yml.
- *
- * Uso:
- *   /ecw portal create <nombre> <mundoDestino> [x y z yaw]
- *   /ecw portal delete <nombre>
- *   /ecw portal list
- *   /ecw portal tp <nombre>
+ * Manages custom block-based portals stored in plugins/ETCWorlds/portals.yml.
  */
 public class CustomPortalManager {
 
     private final ETCWorlds plugin;
+    private final File file;
     private final Map<String, CustomPortal> portals = new LinkedHashMap<>();
-    private File file;
 
     public CustomPortalManager(ETCWorlds plugin) {
         this.plugin = plugin;
@@ -36,63 +29,62 @@ public class CustomPortalManager {
     public void load() {
         portals.clear();
         if (!file.exists()) return;
-        YamlConfiguration yaml = YamlConfiguration.loadConfiguration(file);
-        ConfigurationSection sec = yaml.getConfigurationSection("portals");
+        YamlConfiguration cfg = YamlConfiguration.loadConfiguration(file);
+        ConfigurationSection sec = cfg.getConfigurationSection("portals");
         if (sec == null) return;
         for (String name : sec.getKeys(false)) {
             ConfigurationSection p = sec.getConfigurationSection(name);
             if (p == null) continue;
             CustomPortal portal = new CustomPortal();
-            portal.name = name;
-            portal.triggerWorld = p.getString("trigger.world", "");
-            portal.triggerX     = p.getInt("trigger.x", 0);
-            portal.triggerY     = p.getInt("trigger.y", 0);
-            portal.triggerZ     = p.getInt("trigger.z", 0);
+            portal.name             = name;
+            portal.triggerWorld     = p.getString("trigger.world", "");
+            portal.triggerX         = p.getInt("trigger.x");
+            portal.triggerY         = p.getInt("trigger.y");
+            portal.triggerZ         = p.getInt("trigger.z");
             portal.destinationWorld = p.getString("destination.world", "");
-            portal.destX   = p.getDouble("destination.x", Double.MAX_VALUE);
-            portal.destY   = p.getDouble("destination.y", Double.MAX_VALUE);
-            portal.destZ   = p.getDouble("destination.z", Double.MAX_VALUE);
-            portal.destYaw   = (float) p.getDouble("destination.yaw", 0);
-            portal.destPitch = (float) p.getDouble("destination.pitch", 0);
+            if (p.contains("destination.x")) {
+                portal.destX     = p.getDouble("destination.x");
+                portal.destY     = p.getDouble("destination.y");
+                portal.destZ     = p.getDouble("destination.z");
+                portal.destYaw   = (float) p.getDouble("destination.yaw", 0);
+                portal.destPitch = (float) p.getDouble("destination.pitch", 0);
+            }
             portal.permission    = p.getString("permission", "");
             portal.enterMessage  = p.getString("enter-message", "");
             portals.put(name.toLowerCase(), portal);
         }
-        plugin.getLogger().info("Portales custom cargados: " + portals.size());
+        plugin.getLogger().info("[ETCWorlds] Loaded " + portals.size() + " custom portal(s).");
     }
 
     public void save() {
-        YamlConfiguration yaml = new YamlConfiguration();
-        for (CustomPortal p : portals.values()) {
-            String base = "portals." + p.name;
-            yaml.set(base + ".trigger.world", p.triggerWorld);
-            yaml.set(base + ".trigger.x", p.triggerX);
-            yaml.set(base + ".trigger.y", p.triggerY);
-            yaml.set(base + ".trigger.z", p.triggerZ);
-            yaml.set(base + ".destination.world", p.destinationWorld);
-            if (p.hasCustomDest()) {
-                yaml.set(base + ".destination.x",     p.destX);
-                yaml.set(base + ".destination.y",     p.destY);
-                yaml.set(base + ".destination.z",     p.destZ);
-                yaml.set(base + ".destination.yaw",   (double) p.destYaw);
-                yaml.set(base + ".destination.pitch", (double) p.destPitch);
+        YamlConfiguration cfg = new YamlConfiguration();
+        for (CustomPortal portal : portals.values()) {
+            String base = "portals." + portal.name;
+            cfg.set(base + ".trigger.world", portal.triggerWorld);
+            cfg.set(base + ".trigger.x", portal.triggerX);
+            cfg.set(base + ".trigger.y", portal.triggerY);
+            cfg.set(base + ".trigger.z", portal.triggerZ);
+            cfg.set(base + ".destination.world", portal.destinationWorld);
+            if (portal.hasCustomDest()) {
+                cfg.set(base + ".destination.x",     portal.destX);
+                cfg.set(base + ".destination.y",     portal.destY);
+                cfg.set(base + ".destination.z",     portal.destZ);
+                cfg.set(base + ".destination.yaw",   portal.destYaw);
+                cfg.set(base + ".destination.pitch", portal.destPitch);
             }
-            if (!p.permission.isEmpty())   yaml.set(base + ".permission", p.permission);
-            if (!p.enterMessage.isEmpty()) yaml.set(base + ".enter-message", p.enterMessage);
+            if (!portal.permission.isEmpty())   cfg.set(base + ".permission",    portal.permission);
+            if (!portal.enterMessage.isEmpty())  cfg.set(base + ".enter-message", portal.enterMessage);
         }
         try {
-            yaml.save(file);
+            cfg.save(file);
         } catch (IOException e) {
-            plugin.getLogger().warning("[ETCWorlds] Error guardando portals.yml: " + e.getMessage());
+            plugin.getLogger().warning("[ETCWorlds] Failed to save portals.yml: " + e.getMessage());
         }
     }
 
-    /** Registra un nuevo portal. Devuelve false si ya existe uno con ese nombre. */
-    public boolean add(CustomPortal portal) {
-        if (portals.containsKey(portal.name.toLowerCase())) return false;
+    public void add(CustomPortal portal) {
         portals.put(portal.name.toLowerCase(), portal);
         save();
-        return true;
     }
 
     public boolean remove(String name) {
@@ -101,11 +93,11 @@ public class CustomPortalManager {
         return removed;
     }
 
-    /** Devuelve el portal cuyo bloque disparador coincide exactamente. */
-    public CustomPortal getAt(int x, int y, int z, String worldName) {
+    /** Returns the portal whose trigger block matches the given coordinates, or null. */
+    public CustomPortal getAt(int x, int y, int z, String world) {
         for (CustomPortal p : portals.values()) {
             if (p.triggerX == x && p.triggerY == y && p.triggerZ == z
-                    && p.triggerWorld.equalsIgnoreCase(worldName)) {
+                    && p.triggerWorld.equalsIgnoreCase(world)) {
                 return p;
             }
         }
@@ -117,7 +109,7 @@ public class CustomPortalManager {
     }
 
     public Collection<CustomPortal> all() {
-        return Collections.unmodifiableCollection(portals.values());
+        return new ArrayList<>(portals.values());
     }
 
     public int count() {

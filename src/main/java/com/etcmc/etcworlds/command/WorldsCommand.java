@@ -1,13 +1,14 @@
 package com.etcmc.etcworlds.command;
 
 import com.etcmc.etcworlds.ETCWorlds;
+import com.etcmc.etcworlds.model.CustomPortal;
 import com.etcmc.etcworlds.model.WorldRules;
 import com.etcmc.etcworlds.model.WorldTemplate;
 import com.etcmc.etcworlds.util.WorldFiles;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
-import org.bukkit.GameRule;
 import org.bukkit.GameMode;
+import org.bukkit.GameRule;
 import org.bukkit.Location;
 import org.bukkit.World;
 import org.bukkit.command.Command;
@@ -282,8 +283,7 @@ public class WorldsCommand implements CommandExecutor, TabCompleter {
             s.sendMessage(ChatColor.YELLOW + "Uso: /etcworlds set <world> <property> <value>");
             s.sendMessage(ChatColor.GRAY + "Propiedades: pvp, mob-spawn, animal-spawn, fall-damage, hunger, " +
                     "build, fly, gamemode, keep-inv, weather-locked, time-locked, fixed-time, " +
-                    "border-size, view-distance, public-access, access-permission, group, keep-loaded, " +
-                    "template, instance, biome, enter-message, exit-message");
+                    "border-size, view-distance, public-access, access-permission, group, keep-loaded, template, instance");
             return true;
         }
         String world = a[1];
@@ -486,172 +486,125 @@ public class WorldsCommand implements CommandExecutor, TabCompleter {
         s.sendMessage(ChatColor.GRAY + "Usar: /etcworlds create <name> NORMAL NORMAL <seed>");
     }
 
-    // -------------------------------------------------------------------------------------------
-    //   STATUS
-    // -------------------------------------------------------------------------------------------
-
+    /** /ecw status — resumen de todos los mundos con RAM y estado. */
     private void status(CommandSender s) {
-        if (!s.hasPermission("etcworlds.list")) { noPerm(s); return; }
-        s.sendMessage(ChatColor.GOLD + "════ ETCWorlds Status ════");
-        int loaded = 0;
-        int managed = plugin.worlds().getManagedNames().size();
-        long totalChunks = 0;
+        if (!s.hasPermission("etcworlds.admin")) { noPerm(s); return; }
+        Runtime rt = Runtime.getRuntime();
+        long usedMb = (rt.totalMemory() - rt.freeMemory()) / 1_048_576L;
+        long totalMb = rt.totalMemory() / 1_048_576L;
+        s.sendMessage(ChatColor.GOLD + "=== ETCWorlds Status  RAM: " + usedMb + "/" + totalMb + " MB ===");
         for (String name : plugin.worlds().getManagedNames()) {
             World w = Bukkit.getWorld(name);
             WorldRules r = plugin.worlds().getRules(name);
-            String state;
-            int players = 0;
+            String tmpl = r != null ? r.template.name() : "?";
             if (w != null) {
-                loaded++;
-                players = w.getPlayers().size();
-                totalChunks += w.getLoadedChunks().length;
-                state = ChatColor.GREEN + "✔";
+                int chunks  = w.getLoadedChunks().length;
+                int players = w.getPlayers().size();
+                s.sendMessage(ChatColor.GREEN + "● " + ChatColor.YELLOW + name
+                        + ChatColor.GRAY + " [" + tmpl + "] chunks=" + chunks + " players=" + players);
             } else {
-                state = ChatColor.DARK_GRAY + "○";
+                s.sendMessage(ChatColor.DARK_GRAY + "○ " + name + ChatColor.GRAY + " [" + tmpl + "] (descargado)");
             }
-            String tmpl  = r != null ? r.template.name() : "?";
-            String group = r != null ? r.worldGroup : "default";
-            String extra = w != null ? ChatColor.WHITE + " j=" + players : "";
-            s.sendMessage(state + ChatColor.YELLOW + " " + name
-                    + ChatColor.GRAY + " [" + tmpl + "] grp=" + group + extra);
         }
-        s.sendMessage(ChatColor.GRAY + "Cargados: " + loaded + "/" + managed
-                + "  Chunks: " + totalChunks);
-        long freeM  = Runtime.getRuntime().freeMemory()  / 1024 / 1024;
-        long totalM = Runtime.getRuntime().totalMemory() / 1024 / 1024;
-        long maxM   = Runtime.getRuntime().maxMemory()   / 1024 / 1024;
-        s.sendMessage(ChatColor.GRAY + "RAM: " + (totalM - freeM) + "MB usada / " + maxM + "MB máx");
     }
 
-    // -------------------------------------------------------------------------------------------
-    //   GAMERULE
-    // -------------------------------------------------------------------------------------------
-
-    @SuppressWarnings({"unchecked", "rawtypes"})
+    /** /ecw gamerule &lt;world&gt; &lt;rule&gt; &lt;value&gt; */
+    @SuppressWarnings({"rawtypes", "unchecked"})
     private boolean gamerule(CommandSender s, String[] a) {
         if (!s.hasPermission("etcworlds.set")) { noPerm(s); return true; }
-        if (a.length < 4) {
-            s.sendMessage(ChatColor.YELLOW + "Uso: /etcworlds gamerule <world> <rule> <value>");
-            return true;
-        }
+        if (a.length < 4) { s.sendMessage(ChatColor.YELLOW + "Uso: /ecw gamerule <world> <rule> <value>"); return true; }
         World w = Bukkit.getWorld(a[1]);
         if (w == null) { s.sendMessage(ChatColor.RED + "Mundo no cargado: " + a[1]); return true; }
         GameRule rule = GameRule.getByName(a[2]);
         if (rule == null) { s.sendMessage(ChatColor.RED + "GameRule desconocida: " + a[2]); return true; }
-        try {
-            Object value;
-            if (rule.getType() == Boolean.class) {
-                value = Boolean.parseBoolean(a[3]);
-            } else {
-                value = Integer.parseInt(a[3]);
-            }
-            w.setGameRule(rule, value);
-            s.sendMessage(ChatColor.GREEN + "GameRule " + a[2] + " = " + a[3] + " en " + a[1]);
-        } catch (NumberFormatException e) {
-            s.sendMessage(ChatColor.RED + "Valor inválido (esta regla requiere un número).");
+        Object val;
+        if (rule.getType() == Boolean.class) val = Boolean.parseBoolean(a[3]);
+        else {
+            try { val = Integer.parseInt(a[3]); }
+            catch (NumberFormatException ex) { s.sendMessage(ChatColor.RED + "Valor inválido."); return true; }
         }
+        w.setGameRule(rule, val);
+        s.sendMessage(ChatColor.GREEN + "GameRule " + a[2] + " = " + a[3] + " en " + a[1] + ".");
         return true;
     }
 
-    // -------------------------------------------------------------------------------------------
-    //   PORTAL
-    // -------------------------------------------------------------------------------------------
-
+    /** /ecw portal create|delete|list|tp */
     private boolean portal(CommandSender s, String[] a) {
         if (!s.hasPermission("etcworlds.portal")) { noPerm(s); return true; }
         if (a.length < 2) {
-            s.sendMessage(ChatColor.YELLOW + "Uso: /etcworlds portal <create|delete|list|tp> [args]");
+            s.sendMessage(ChatColor.YELLOW + "Uso: /ecw portal create <name> | delete <name> | list | tp <name>");
             return true;
         }
-        return switch (a[1].toLowerCase(Locale.ROOT)) {
-            case "create", "add" -> portalCreate(s, a);
+        return switch (a[1].toLowerCase()) {
+            case "create" -> portalCreate(s, a);
             case "delete", "remove" -> portalDelete(s, a);
-            case "list"  -> { portalList(s); yield true; }
-            case "tp"    -> portalTp(s, a);
+            case "list" -> { portalList(s); yield true; }
+            case "tp" -> portalTp(s, a);
             default -> { s.sendMessage(ChatColor.YELLOW + "Subcomandos: create, delete, list, tp"); yield true; }
         };
     }
 
     private boolean portalCreate(CommandSender s, String[] a) {
-        // /ecw portal create <nombre> <mundoDestino> [x y z [yaw]]
-        if (a.length < 4) {
-            s.sendMessage(ChatColor.YELLOW + "Uso: /etcworlds portal create <nombre> <mundoDestino> [x y z [yaw]]");
-            return true;
-        }
+        // /ecw portal create <name> <destWorld> [x y z]
+        if (a.length < 4) { s.sendMessage(ChatColor.YELLOW + "Uso: /ecw portal create <name> <destWorld> [x y z]"); return true; }
         if (!(s instanceof Player p)) { s.sendMessage(ChatColor.RED + "Solo jugadores."); return true; }
-        com.etcmc.etcworlds.model.CustomPortal portal = new com.etcmc.etcworlds.model.CustomPortal();
+        CustomPortal portal = new CustomPortal();
         portal.name = a[2];
         portal.destinationWorld = a[3];
         portal.triggerWorld = p.getWorld().getName();
-        portal.triggerX = p.getLocation().getBlockX();
-        portal.triggerY = p.getLocation().getBlockY();
-        portal.triggerZ = p.getLocation().getBlockZ();
+        Location loc = p.getLocation();
+        portal.triggerX = loc.getBlockX();
+        portal.triggerY = loc.getBlockY();
+        portal.triggerZ = loc.getBlockZ();
         if (a.length >= 7) {
             try {
                 portal.destX = Double.parseDouble(a[4]);
                 portal.destY = Double.parseDouble(a[5]);
                 portal.destZ = Double.parseDouble(a[6]);
-                if (a.length >= 8) portal.destYaw = Float.parseFloat(a[7]);
-            } catch (NumberFormatException e) {
-                s.sendMessage(ChatColor.RED + "Coordenadas de destino inválidas.");
-                return true;
-            }
+            } catch (NumberFormatException ex) { s.sendMessage(ChatColor.RED + "Coordenadas inválidas."); return true; }
         }
-        if (plugin.portals().add(portal)) {
-            s.sendMessage(ChatColor.GREEN + "Portal '" + portal.name + "' creado en tu posición "
-                    + ChatColor.GRAY + "(" + portal.triggerX + "," + portal.triggerY + "," + portal.triggerZ + ")"
-                    + ChatColor.GREEN + " → " + portal.destinationWorld);
-        } else {
-            s.sendMessage(ChatColor.RED + "Ya existe un portal con ese nombre.");
-        }
+        plugin.portals().add(portal);
+        s.sendMessage(ChatColor.GREEN + "Portal '" + portal.name + "' creado en " + portal.triggerWorld
+                + " " + portal.triggerX + "," + portal.triggerY + "," + portal.triggerZ
+                + " -> " + portal.destinationWorld);
         return true;
     }
 
     private boolean portalDelete(CommandSender s, String[] a) {
-        if (a.length < 3) { s.sendMessage(ChatColor.YELLOW + "Uso: /etcworlds portal delete <nombre>"); return true; }
-        if (plugin.portals().remove(a[2]))
-            s.sendMessage(ChatColor.GREEN + "Portal eliminado: " + a[2]);
-        else
-            s.sendMessage(ChatColor.RED + "Portal no encontrado: " + a[2]);
+        if (a.length < 3) { s.sendMessage(ChatColor.YELLOW + "Uso: /ecw portal delete <name>"); return true; }
+        if (plugin.portals().remove(a[2])) s.sendMessage(ChatColor.GREEN + "Portal '" + a[2] + "' eliminado.");
+        else s.sendMessage(ChatColor.RED + "Portal no encontrado: " + a[2]);
         return true;
     }
 
     private void portalList(CommandSender s) {
-        s.sendMessage(ChatColor.GOLD + "Portales custom (" + plugin.portals().count() + "):");
-        if (plugin.portals().all().isEmpty()) { s.sendMessage(ChatColor.GRAY + "(ninguno)"); return; }
-        for (com.etcmc.etcworlds.model.CustomPortal p : plugin.portals().all()) {
-            String dest = p.hasCustomDest()
-                    ? p.destinationWorld + " (" + (int) p.destX + "," + (int) p.destY + "," + (int) p.destZ + ")"
-                    : p.destinationWorld + " (spawn)";
-            s.sendMessage(ChatColor.YELLOW + p.name
-                    + ChatColor.GRAY + " @ " + p.triggerWorld + " [" + p.triggerX + "," + p.triggerY + "," + p.triggerZ + "]"
-                    + ChatColor.WHITE + " → " + dest);
-        }
+        if (plugin.portals().count() == 0) { s.sendMessage(ChatColor.GRAY + "No hay portales registrados."); return; }
+        s.sendMessage(ChatColor.GOLD + "Portales (" + plugin.portals().count() + "):");
+        for (CustomPortal p : plugin.portals().all())
+            s.sendMessage(ChatColor.YELLOW + "  " + p.name + ChatColor.GRAY
+                    + " [" + p.triggerWorld + " " + p.triggerX + "," + p.triggerY + "," + p.triggerZ
+                    + " -> " + p.destinationWorld + "]");
     }
 
     private boolean portalTp(CommandSender s, String[] a) {
-        if (a.length < 3) { s.sendMessage(ChatColor.YELLOW + "Uso: /etcworlds portal tp <nombre>"); return true; }
+        if (a.length < 3) { s.sendMessage(ChatColor.YELLOW + "Uso: /ecw portal tp <name>"); return true; }
         if (!(s instanceof Player p)) { s.sendMessage(ChatColor.RED + "Solo jugadores."); return true; }
-        com.etcmc.etcworlds.model.CustomPortal portal = plugin.portals().get(a[2]);
+        CustomPortal portal = plugin.portals().get(a[2]);
         if (portal == null) { s.sendMessage(ChatColor.RED + "Portal no encontrado."); return true; }
-        Location dest = null;
-        if (portal.hasCustomDest()) {
-            World dw = Bukkit.getWorld(portal.destinationWorld);
-            if (dw != null) dest = new Location(dw, portal.destX, portal.destY, portal.destZ, portal.destYaw, 0f);
-        }
+        Location dest = portal.hasCustomDest()
+                ? new Location(Bukkit.getWorld(portal.destinationWorld), portal.destX, portal.destY, portal.destZ,
+                               portal.destYaw, portal.destPitch)
+                : null;
         plugin.lazyTeleport().teleport(p, portal.destinationWorld, dest);
         return true;
     }
 
-    // -------------------------------------------------------------------------------------------
-    //   TELEPORTALL
-    // -------------------------------------------------------------------------------------------
-
+    /** /ecw tpall &lt;world&gt; — teleports all online players to a world. */
     private boolean tpall(CommandSender s, String[] a) {
         if (!s.hasPermission("etcworlds.tp.others")) { noPerm(s); return true; }
-        if (a.length < 2) { s.sendMessage(ChatColor.YELLOW + "Uso: /etcworlds tpall <world>"); return true; }
+        if (a.length < 2) { s.sendMessage(ChatColor.YELLOW + "Uso: /ecw tpall <world>"); return true; }
         String worldName = a[1];
-        if (!plugin.worlds().isManaged(worldName)) {
+        if (plugin.worlds().getRules(worldName) == null) {
             s.sendMessage(ChatColor.RED + "Mundo no registrado: " + worldName);
             return true;
         }
@@ -674,15 +627,15 @@ public class WorldsCommand implements CommandExecutor, TabCompleter {
         s.sendMessage(ChatColor.YELLOW + "/etcworlds export <name>");
         s.sendMessage(ChatColor.YELLOW + "/etcworlds backup <name>");
         s.sendMessage(ChatColor.YELLOW + "/etcworlds set <world> <prop> <val>");
-        s.sendMessage(ChatColor.YELLOW + "/etcworlds gamerule <world> <rule> <value>");
         s.sendMessage(ChatColor.YELLOW + "/etcworlds link <world> <nether|end> <target|none>");
-        s.sendMessage(ChatColor.YELLOW + "/etcworlds portal <create|delete|list|tp> [args]");
         s.sendMessage(ChatColor.YELLOW + "/etcworlds spawn [world]");
         s.sendMessage(ChatColor.YELLOW + "/etcworlds tp [player] <world>");
-        s.sendMessage(ChatColor.YELLOW + "/etcworlds tpall <world>");
-        s.sendMessage(ChatColor.YELLOW + "/etcworlds status");
         s.sendMessage(ChatColor.YELLOW + "/etcworlds list / info / templates / reload");
         s.sendMessage(ChatColor.YELLOW + "/etcworlds gui / clone / instance / pregen / seeds");
+        s.sendMessage(ChatColor.YELLOW + "/etcworlds status");
+        s.sendMessage(ChatColor.YELLOW + "/etcworlds gamerule <world> <rule> <value>");
+        s.sendMessage(ChatColor.YELLOW + "/etcworlds portal create|delete|list|tp");
+        s.sendMessage(ChatColor.YELLOW + "/etcworlds tpall <world>");
     }
 
     private void noPerm(CommandSender s) {
@@ -708,25 +661,14 @@ public class WorldsCommand implements CommandExecutor, TabCompleter {
                 || a[0].equalsIgnoreCase("unload") || a[0].equalsIgnoreCase("export")
                 || a[0].equalsIgnoreCase("backup") || a[0].equalsIgnoreCase("info")
                 || a[0].equalsIgnoreCase("spawn") || a[0].equalsIgnoreCase("set")
-                || a[0].equalsIgnoreCase("link") || a[0].equalsIgnoreCase("tp")
-                || a[0].equalsIgnoreCase("gamerule") || a[0].equalsIgnoreCase("gr")
-                || a[0].equalsIgnoreCase("tpall") || a[0].equalsIgnoreCase("teleportall")))
+                || a[0].equalsIgnoreCase("link") || a[0].equalsIgnoreCase("tp")))
             return new ArrayList<>(plugin.worlds().getManagedNames());
-        if (a.length == 2 && a[0].equalsIgnoreCase("portal"))
-            return List.of("create", "delete", "list", "tp");
-        if (a.length == 3 && a[0].equalsIgnoreCase("portal")
-                && (a[1].equalsIgnoreCase("delete") || a[1].equalsIgnoreCase("tp")))
-            return plugin.portals().all().stream()
-                    .map(p -> p.name).filter(n -> n.startsWith(a[2].toLowerCase())).toList();
         if (a.length == 3 && a[0].equalsIgnoreCase("create"))
             return Arrays.stream(WorldTemplate.values()).map(Enum::name).toList();
         if (a.length == 4 && a[0].equalsIgnoreCase("create"))
             return Arrays.stream(World.Environment.values()).map(Enum::name).toList();
         if (a.length == 3 && a[0].equalsIgnoreCase("link"))
             return List.of("nether", "end");
-        if (a.length == 3 && (a[0].equalsIgnoreCase("gamerule") || a[0].equalsIgnoreCase("gr")))
-            return Arrays.stream(GameRule.values()).map(GameRule::getName)
-                    .filter(n -> n.toLowerCase().startsWith(a[2].toLowerCase())).toList();
         return List.of();
     }
 }

@@ -73,12 +73,12 @@ public class WorldRules {
     public List<String> commandWhitelist = new ArrayList<>();
     public List<String> commandBlacklist = new ArrayList<>();
 
+    // === Mensajes de mundo ===
+    public String enterMessage = ""; // se muestra al entrar al mundo
+    public String exitMessage  = ""; // se muestra al salir del mundo
+
     // === Backups ===
     public boolean backupEnabled = true;
-
-    // === Mensajes al entrar/salir ===
-    public String enterMessage = ""; // mensaje al entrar al mundo. {world} = nombre
-    public String exitMessage  = ""; // mensaje al salir del mundo. {world} = nombre
 
     public static WorldRules fromConfig(String name, ConfigurationSection s) {
         WorldRules r = new WorldRules();

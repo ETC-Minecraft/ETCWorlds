@@ -100,28 +100,27 @@ public class WorldTpCommand implements CommandExecutor, TabCompleter {
         return true;
     }
 
-    /** /spawn — teletransporta al spawn del mundo actual del jugador. */
+    /** /spawn — teleports to the current world's configured spawn. */
     private boolean spawnWorld(CommandSender s) {
         if (!s.hasPermission("etcworlds.spawn")) { s.sendMessage(ChatColor.RED + "Sin permiso."); return true; }
         if (!(s instanceof Player p)) { s.sendMessage(ChatColor.RED + "Solo jugadores."); return true; }
         String worldName = p.getWorld().getName();
         WorldRules r = plugin.worlds().getRules(worldName);
-        Location spawn = r != null ? r.spawnLocation(p.getWorld()) : p.getWorld().getSpawnLocation();
-        plugin.lazyTeleport().teleport(p, worldName, spawn);
+        Location dest = r != null ? r.spawnLocation(p.getWorld()) : p.getWorld().getSpawnLocation();
+        plugin.lazyTeleport().teleport(p, worldName, dest);
         return true;
     }
 
-    /** /lobby — teletransporta al mundo lobby configurado. */
+    /** /lobby — teleports to the configured lobby world. */
     private boolean lobbyWorld(CommandSender s) {
         if (!s.hasPermission("etcworlds.lobby")) { s.sendMessage(ChatColor.RED + "Sin permiso."); return true; }
         if (!(s instanceof Player p)) { s.sendMessage(ChatColor.RED + "Solo jugadores."); return true; }
-        String lobby = plugin.getConfig().getString("lobby-world", "");
-        if (lobby.isBlank()) {
-            p.sendMessage(ChatColor.RED + "[ETCWorlds] No hay lobby configurado. "
-                    + "Define 'lobby-world: <nombre>' en config.yml");
+        String lobbyName = plugin.getConfig().getString("lobby-world", "");
+        if (lobbyName.isEmpty()) {
+            p.sendMessage(ChatColor.RED + "No hay mundo lobby configurado. Define 'lobby-world' en config.yml.");
             return true;
         }
-        plugin.lazyTeleport().teleport(p, lobby, null);
+        plugin.lazyTeleport().teleport(p, lobbyName, null);
         return true;
     }
 

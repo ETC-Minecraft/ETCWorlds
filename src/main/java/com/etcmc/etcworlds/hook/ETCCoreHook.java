@@ -1,24 +1,20 @@
 package com.etcmc.etcworlds.hook;
 
 import com.etcmc.etcworlds.ETCWorlds;
+import com.etcmc.etcworlds.command.WorldTpCommand;
 import org.bukkit.Bukkit;
 import org.bukkit.command.Command;
+import org.bukkit.command.CommandMap;
+import org.bukkit.command.PluginCommand;
 
+import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.Map;
 
 /**
  * Bridge opcional con ETCCore.
- *
- * Cuando ETCCore está instalado junto a ETCWorlds, ETCWorlds toma el control
- * de /spawn y /lobby sobreescribiéndolos en el CommandMap de Bukkit. Así:
- *   - /spawn  → spawn del mundo actual (ETCWorlds per-world spawn)
- *   - /lobby  → mundo lobby configurado en ETCWorlds config.yml
- *
- * ETCCore sigue disponible como /etccore:spawn y /etccore:lobby para admins.
- *
- * Las acciones [WORLD], [SPAWN] y [LOBBY] ya fueron añadidas directamente a
- * CustomCommand.processAction() en ETCCore para usarse en CommandBuilder/MenuBuilder.
+ * Si ETCCore está cargado, toma el control de /spawn y /lobby usando el CommandMap
+ * para que ETCWorlds pueda teletransportar al spawn del mundo actual o al lobby.
  */
 public class ETCCoreHook {
 
@@ -30,46 +26,44 @@ public class ETCCoreHook {
     public void register() {
         this.enabled = Bukkit.getPluginManager().isPluginEnabled("ETCCore");
         if (enabled) {
-            plugin.getLogger().info("ETCCore detectado: ETCWorlds tomará control de /spawn y /lobby.");
+            plugin.getLogger().info("[ETCWorlds] ETCCore detectado: tomando control de /spawn y /lobby.");
             overrideSpawnLobby();
         } else {
-            plugin.getLogger().info("ETCCore no presente: integración omitida.");
+            plugin.getLogger().info("[ETCWorlds] ETCCore no presente: integracion omitida.");
         }
     }
 
-    /**
-     * Sobreescribe /spawn y /lobby en el CommandMap de Bukkit para que
-     * respondan al executor de ETCWorlds en lugar del de ETCCore.
-     * ETCCore carga primero (es soft-depend), por lo que sus comandos ganan
-     * prioridad por defecto — este método la revierte.
-     */
+    @SuppressWarnings("unchecked")
     private void overrideSpawnLobby() {
         try {
-            // Acceder al CommandMap via reflexión (compatible con todas las versiones de Paper/Folia)
-            Method getMap = Bukkit.getServer().getClass().getMethod("getCommandMap");
-            Object commandMap = getMap.invoke(Bukkit.getServer());
-            @SuppressWarnings("unchecked")
-            Map<String, Command> known = (Map<String, Command>)
-                    commandMap.getClass().getMethod("getKnownCommands").invoke(commandMap);
+            // Obtener el CommandMap via reflection
+            Field cmdMapField = Bukkit.getServer().getClass().getDeclaredField("commandMap");
+            cmdMapField.setAccessible(true);
+            CommandMap commandMap = (CommandMap) cmdMapField.get(Bukkit.getServer());
 
-            org.bukkit.command.PluginCommand spawn = plugin.getCommand("spawn");
-            org.bukkit.command.PluginCommand lobby = plugin.getCommand("lobby");
+            // Obtener el mapa interno knownCommands
+            Field knownField = commandMap.getClass().getDeclaredField("knownCommands");
+            knownField.setAccessible(true);
+            Map<String, Command> known = (Map<String, Command>) knownField.get(commandMap);
 
-            if (spawn != null) {
-                known.put("spawn", spawn);
-                known.put("etccore:spawn", spawn); // también el prefijado
-                plugin.getLogger().info("  \u2192 /spawn ahora gestionado por ETCWorlds.");
+            WorldTpCommand tpCmd = new WorldTpCommand(plugin);
+            PluginCommand spawnCmd = plugin.getCommand("spawn");
+            PluginCommand lobbyCmd = plugin.getCommand("lobby");
+
+            if (spawnCmd != null) {
+                known.put("spawn", spawnCmd);
+                known.put("etccore:spawn", spawnCmd);
+                plugin.getLogger().info("[ETCWorlds] /spawn tomado de ETCCore.");
             }
-            if (lobby != null) {
-                known.put("lobby", lobby);
-                known.put("etccore:lobby", lobby);
-                plugin.getLogger().info("  \u2192 /lobby ahora gestionado por ETCWorlds.");
+            if (lobbyCmd != null) {
+                known.put("lobby", lobbyCmd);
+                known.put("etccore:lobby", lobbyCmd);
+                plugin.getLogger().info("[ETCWorlds] /lobby tomado de ETCCore.");
             }
-        } catch (Exception e) {
-            plugin.getLogger().warning("[ETCWorlds] No se pudo sobreescribir /spawn y /lobby de ETCCore: " + e.getMessage());
+        } catch (Exception ex) {
+            plugin.getLogger().warning("[ETCWorlds] No se pudo tomar /spawn y /lobby: " + ex.getMessage());
         }
     }
 
     public boolean isEnabled() { return enabled; }
 }
-

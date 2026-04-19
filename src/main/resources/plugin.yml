@@ -31,7 +31,7 @@ commands:
     aliases: [winfo, mvinfo]
     permission: etcworlds.info
   worldspawn:
-    description: Define el spawn del mundo actual donde estás parado.
+    description: Define el spawn del mundo actual donde estas parado.
     usage: /worldspawn
     aliases: [setworldspawn, wspawn]
     permission: etcworlds.spawn.set
@@ -124,7 +124,7 @@ permissions:
     description: Ignora la regla PvP del mundo.
     default: op
   etcworlds.spawn:
-    description: Permite usar /spawn (ir al spawn del mundo actual).
+    description: Permite usar /spawn.
     default: true
   etcworlds.lobby:
     description: Permite usar /lobby.
