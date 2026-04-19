@@ -185,6 +185,15 @@ public class WorldsManager {
         rules.put(name, r);
         registryFolder.put(name, folderPath);
 
+        // En Folia, Bukkit.createWorld() no funciona en tiempo real.
+        // Registramos el mundo y guardamos todo para que cargue en el siguiente reinicio.
+        if (FoliaWorldFactory.isFolia()) {
+            saveRules(name);
+            saveRegistry();
+            saveToBukkitYml(name, folderPath, r);
+            throw new IllegalStateException("FOLIA_REGISTERED:" + name);
+        }
+
         World w = buildAndCreate(name, folderPath, r);
         if (w == null) {
             rules.remove(name);
@@ -215,25 +224,11 @@ public class WorldsManager {
         if (gen != null) wc.generator(gen);
         BiomeProvider bp = biomeProviderFor(r);
         if (bp != null) wc.biomeProvider(bp);
-        // En Folia, Bukkit.createWorld() lanza UnsupportedOperationException de inmediato.
-        // Usamos el factory propio que reconstruye el ServerLevel vía NMS por reflection.
-        if (FoliaWorldFactory.isFolia()) {
-            try {
-                return FoliaWorldFactory.createWorld(plugin, wc);
-            } catch (Throwable foliaEx) {
-                plugin.getLogger().log(Level.WARNING,
-                        "[ETCWorlds] FoliaWorldFactory falló para '" + name + "'", foliaEx);
-                return null;
-            }
-        }
 
         try {
             return Bukkit.createWorld(wc);
-        } catch (UnsupportedOperationException foliaEx) {
-            plugin.getLogger().warning(
-                "[ETCWorlds] Folia no soporta carga de mundos en tiempo real. "
-                + "El mundo '" + name + "' está registrado pero NO cargado. "
-                + "Para usarlo, agrega su carpeta al servidor y reinicia.");
+        } catch (UnsupportedOperationException ignored) {
+            // Folia: Bukkit.createWorld() no soportado en tiempo real.
             return null;
         }
     }
@@ -292,12 +287,20 @@ public class WorldsManager {
     }
 
     public synchronized World loadWorld(String name) {
+        // Case-insensitive: primero busca por nombre exacto en Bukkit, luego resuelve alias
         World existing = Bukkit.getWorld(name);
         if (existing != null) return existing;
-        WorldRules r = rules.get(name);
-        String folder = registryFolder.get(name);
+        // Intenta con nombre canónico registrado
+        String canonical = resolveWorldName(name);
+        if (canonical != null && !canonical.equals(name)) {
+            existing = Bukkit.getWorld(canonical);
+            if (existing != null) return existing;
+        }
+        String resolved = canonical != null ? canonical : name;
+        WorldRules r = rules.get(resolved);
+        String folder = registryFolder.get(resolved);
         if (folder == null) return null;
-        if (r == null) { r = new WorldRules(); r.name = name; rules.put(name, r); }
+        if (r == null) { r = new WorldRules(); r.name = resolved; rules.put(resolved, r); }
         World w = buildAndCreate(name, folder, r);
         if (w != null) applyRules(w, r);
         return w;
@@ -407,14 +410,31 @@ public class WorldsManager {
     //   QUERIES
     // ===========================================================================================
 
-    public WorldRules getRules(String name) { return rules.get(name); }
-    public boolean isManaged(String name) { return registryFolder.containsKey(name); }
+    /**
+     * Resuelve el nombre canónico del mundo: primero intenta coincidencia exacta,
+     * luego case-insensitive. Devuelve null si no está registrado.
+     */
+    public String resolveWorldName(String input) {
+        if (input == null) return null;
+        if (registryFolder.containsKey(input)) return input;
+        for (String key : registryFolder.keySet())
+            if (key.equalsIgnoreCase(input)) return key;
+        return null;
+    }
+
+    public WorldRules getRules(String name) {
+        String resolved = resolveWorldName(name);
+        return resolved != null ? rules.get(resolved) : null;
+    }
+    public boolean isManaged(String name) { return resolveWorldName(name) != null; }
     public Collection<String> getManagedNames() { return registryFolder.keySet(); }
     public Map<String, String> getRegistry() { return new HashMap<>(registryFolder); }
     public File getWorldsFolder() { return worldsFolder; }
 
     public File worldDirOf(String name) {
-        String rel = registryFolder.get(name);
+        String resolved = resolveWorldName(name);
+        if (resolved == null) return null;
+        String rel = registryFolder.get(resolved);
         if (rel == null) return null;
         return new File(Bukkit.getWorldContainer(), rel);
     }

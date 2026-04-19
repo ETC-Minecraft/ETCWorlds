@@ -138,6 +138,17 @@ public class WorldsCommand implements CommandExecutor, TabCompleter {
                 World w = plugin.worlds().createWorld(name, rules);
                 if (w == null) s.sendMessage(ChatColor.RED + "Falló la creación del mundo.");
                 else s.sendMessage(ChatColor.GREEN + "Mundo " + name + " creado en " + (System.currentTimeMillis() - t0) + "ms.");
+            } catch (IllegalStateException ex) {
+                String msg = ex.getMessage() != null ? ex.getMessage() : "";
+                if (msg.startsWith("FOLIA_REGISTERED:")) {
+                    String wname = msg.substring("FOLIA_REGISTERED:".length());
+                    s.sendMessage(ChatColor.YELLOW + "Mundo '" + wname + "' registrado correctamente.");
+                    s.sendMessage(ChatColor.GRAY + "En Folia los mundos no se pueden crear en tiempo real.");
+                    s.sendMessage(ChatColor.GRAY + "Reinicia el servidor para que cargue automaticamente.");
+                } else {
+                    s.sendMessage(ChatColor.RED + "Error: " + msg);
+                    plugin.getLogger().warning("create world error: " + ex);
+                }
             } catch (Exception ex) {
                 String msg = ex.getMessage() != null ? ex.getMessage() : ex.getClass().getSimpleName();
                 s.sendMessage(ChatColor.RED + "Error creando mundo: " + msg);

@@ -32,37 +32,41 @@ public class LazyTeleportService {
         int radius = plugin.getConfig().getInt("preload.radius", 4);
         long timeoutMs = plugin.getConfig().getLong("preload.timeout-ms", 5000);
 
-        World world = Bukkit.getWorld(worldName);
+        // Case-insensitive: resuelve el nombre canónico registrado
+        String canonical = plugin.worlds().resolveWorldName(worldName);
+        final String resolvedName = canonical != null ? canonical : worldName;
+
+        // Busca el mundo ya cargado por nombre canónico o por el input original
+        World world = Bukkit.getWorld(resolvedName);
+        if (world == null) world = Bukkit.getWorld(worldName);
         if (world == null) {
-            if (!plugin.worlds().isManaged(worldName)) {
+            if (!plugin.worlds().isManaged(resolvedName)) {
                 send(player, "unknown-world", "{world}", worldName);
                 return;
             }
             // loadWorld llama a Bukkit.createWorld — debe correr en el hilo global (Folia)
             send(player, "world-loading", "{world}", worldName);
             Bukkit.getGlobalRegionScheduler().run(plugin, task -> {
-                World w2 = plugin.worlds().loadWorld(worldName);
+                World w2 = plugin.worlds().loadWorld(resolvedName);
                 if (w2 == null) {
                     player.getScheduler().run(plugin, t -> {
-                        // Folia bloquea Bukkit.createWorld() — mundo registrado pero no cargado
-                        boolean isFolia = isFolia();
-                        if (isFolia) {
+                        if (FoliaWorldFactory.isFolia()) {
                             player.sendMessage(org.bukkit.ChatColor.RED
-                                + "[ETCWorlds] El mundo '" + worldName + "' no está cargado."
+                                + "El mundo '" + resolvedName + "' no esta cargado."
                                 + org.bukkit.ChatColor.YELLOW
-                                + " En servidores Folia, los mundos deben estar presentes al arrancar el servidor."
-                                + " Contacta a un administrador.");
+                                + " En Folia los mundos deben estar configurados antes de iniciar el servidor."
+                                + " Pide a un administrador que configure bukkit.yml y reinicie.");
                         } else {
-                            send(player, "unknown-world", "{world}", worldName);
+                            send(player, "unknown-world", "{world}", resolvedName);
                         }
                     }, null);
                     return;
                 }
-                continueWithTeleport(player, w2, worldName, destinationOrNull, enabled, radius, timeoutMs);
+                continueWithTeleport(player, w2, resolvedName, destinationOrNull, enabled, radius, timeoutMs);
             });
             return;
         }
-        continueWithTeleport(player, world, worldName, destinationOrNull, enabled, radius, timeoutMs);
+        continueWithTeleport(player, world, resolvedName, destinationOrNull, enabled, radius, timeoutMs);
     }
 
     private void continueWithTeleport(Player player, World world, String worldName,
