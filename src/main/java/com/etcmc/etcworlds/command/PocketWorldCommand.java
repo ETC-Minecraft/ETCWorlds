@@ -62,13 +62,16 @@ public class PocketWorldCommand implements CommandExecutor, TabCompleter {
                 case "tp", "home", "go" -> tp(s);
                 case "create", "new" -> create(s);
                 case "reset" -> reset(s, a);
-                case "delete", "remove" -> deleteSelf(s, a);
+                case "delete" -> deleteSelfCmd(s, a);
                 case "list" -> { list(s); yield true; }
                 case "info" -> info(s);
-                case "invite", "add" -> invite(s, a);
+                case "invite" -> invite(s, a);
                 case "kick", "uninvite", "remove-invite" -> kick(s, a);
+                case "useradd" -> userAdd(s, a);
+                case "userremove", "userdel", "userrem" -> userRemove(s, a);
                 case "visit", "join" -> visit(s, a);
                 case "setspawn" -> setSpawn(s);
+                case "rules", "flags" -> rules(s, a);
                 case "admin" -> admin(s, a);
                 default -> { help(s); yield true; }
             };
@@ -160,14 +163,23 @@ public class PocketWorldCommand implements CommandExecutor, TabCompleter {
         return true;
     }
 
-    private boolean deleteSelf(CommandSender s, String[] a) {
+    /**
+     * /pw delete            -> aviso de uso
+     * /pw delete confirm    -> borra tu pocketworld
+     */
+    private boolean deleteSelfCmd(CommandSender s, String[] a) {
         if (!(s instanceof Player p)) { s.sendMessage(ChatColor.RED + "Solo jugadores."); return true; }
         if (!p.hasPermission("etcworlds.pw")) { noPerm(s); return true; }
         if (a.length < 2 || !a[1].equalsIgnoreCase("confirm")) {
-            s.sendMessage(ChatColor.RED + "ATENCIÓN: esto BORRA tu pocketworld permanentemente.");
+            s.sendMessage(ChatColor.RED + "ATENCION: esto BORRA tu pocketworld.");
             s.sendMessage(ChatColor.YELLOW + "Confirma con: " + ChatColor.WHITE + "/pw delete confirm");
             return true;
         }
+        return deleteSelf(s);
+    }
+
+    private boolean deleteSelf(CommandSender s) {
+        Player p = (Player) s;
         PocketWorld pw = plugin.pocketWorlds().get(p.getUniqueId());
         if (pw == null) { s.sendMessage(ChatColor.RED + "No tienes pocketworld."); return true; }
         if (p.getWorld().getName().equalsIgnoreCase(pw.worldName))
@@ -255,6 +267,45 @@ public class PocketWorldCommand implements CommandExecutor, TabCompleter {
         return true;
     }
 
+    /**
+     * /pw useradd &lt;jugador&gt; — da permiso al jugador de editar las rules de tu pocketworld.
+     * Lo agrega tambien como invitee si no lo era (para que pueda entrar y editar dentro).
+     */
+    private boolean userAdd(CommandSender s, String[] a) {
+        if (!(s instanceof Player p)) { s.sendMessage(ChatColor.RED + "Solo jugadores."); return true; }
+        if (!p.hasPermission("etcworlds.pw")) { noPerm(s); return true; }
+        if (a.length < 2) { s.sendMessage(ChatColor.YELLOW + "Uso: /pw useradd <jugador>"); return true; }
+        PocketWorld pw = plugin.pocketWorlds().get(p.getUniqueId());
+        if (pw == null) { s.sendMessage(ChatColor.RED + "No tienes pocketworld."); return true; }
+        OfflinePlayer target = Bukkit.getOfflinePlayer(a[1]);
+        if (target.getUniqueId().equals(p.getUniqueId())) { s.sendMessage(ChatColor.RED + "Eres el dueno."); return true; }
+        // Garantizar invite (entrada + build) ademas del permiso de rules
+        plugin.pocketWorlds().invite(p.getUniqueId(), target.getUniqueId());
+        if (plugin.pocketWorlds().addUser(p.getUniqueId(), target.getUniqueId())) {
+            s.sendMessage(ChatColor.GREEN + a[1] + " ahora puede editar las rules de tu PocketWorld.");
+            Player online = target.getPlayer();
+            if (online != null && online.isOnline())
+                online.sendMessage(ChatColor.AQUA + p.getName() + " te dio permiso para editar las rules de su PocketWorld. Usa /pw rules estando dentro.");
+        } else {
+            s.sendMessage(ChatColor.YELLOW + a[1] + " ya tenia permiso de editar rules.");
+        }
+        return true;
+    }
+
+    /** /pw userremove &lt;jugador&gt; — quita el permiso de editar rules (no expulsa, no quita invite). */
+    private boolean userRemove(CommandSender s, String[] a) {
+        if (!(s instanceof Player p)) { s.sendMessage(ChatColor.RED + "Solo jugadores."); return true; }
+        if (a.length < 2) { s.sendMessage(ChatColor.YELLOW + "Uso: /pw userremove <jugador>"); return true; }
+        PocketWorld pw = plugin.pocketWorlds().get(p.getUniqueId());
+        if (pw == null) { s.sendMessage(ChatColor.RED + "No tienes pocketworld."); return true; }
+        OfflinePlayer target = Bukkit.getOfflinePlayer(a[1]);
+        if (plugin.pocketWorlds().removeUser(p.getUniqueId(), target.getUniqueId()))
+            s.sendMessage(ChatColor.GREEN + a[1] + " ya no puede editar las rules de tu PocketWorld.");
+        else
+            s.sendMessage(ChatColor.YELLOW + a[1] + " no tenia permiso de editar rules.");
+        return true;
+    }
+
     private boolean visit(CommandSender s, String[] a) {
         if (!(s instanceof Player p)) { s.sendMessage(ChatColor.RED + "Solo jugadores."); return true; }
         if (!p.hasPermission("etcworlds.pw.visit")) { noPerm(s); return true; }
@@ -289,6 +340,51 @@ public class PocketWorldCommand implements CommandExecutor, TabCompleter {
         return true;
     }
 
+    /**
+     * /pw rules            -> si estas dentro de un pocketworld del que eres dueno/user/admin,
+     *                         abre la GUI de ESE pocketworld. Si no, abre el tuyo.
+     * /pw rules &lt;jugador&gt; -> abre la GUI del pocketworld de otro jugador.
+     *   Permitido si: eres admin, o eres user (permiso de editar rules) de su pocketworld.
+     */
+    private boolean rules(CommandSender s, String[] a) {
+        if (!(s instanceof Player p)) { s.sendMessage(ChatColor.RED + "Solo jugadores."); return true; }
+        if (!p.hasPermission("etcworlds.pw")) { noPerm(s); return true; }
+
+        UUID targetUuid;
+        if (a.length >= 2) {
+            OfflinePlayer op = Bukkit.getOfflinePlayer(a[1]);
+            if (op.getUniqueId() == null) { s.sendMessage(ChatColor.RED + "Jugador desconocido."); return true; }
+            targetUuid = op.getUniqueId();
+            // Permiso: admin OR user del pocketworld destino OR el propio dueno
+            if (!targetUuid.equals(p.getUniqueId()) && !p.hasPermission("etcworlds.pw.admin")) {
+                PocketWorld targetPw = plugin.pocketWorlds().get(targetUuid);
+                if (targetPw == null || !targetPw.users.contains(p.getUniqueId())) {
+                    s.sendMessage(ChatColor.RED + "Solo puedes editar rules de pocketworlds donde te dieron permiso (/pw useradd).");
+                    return true;
+                }
+            }
+        } else {
+            // Sin arg: intentar usar el pocketworld donde estas parado
+            PocketWorld here = plugin.pocketWorlds().getByWorldName(p.getWorld().getName());
+            if (here != null) {
+                boolean allowed = here.owner.equals(p.getUniqueId())
+                        || here.users.contains(p.getUniqueId())
+                        || p.hasPermission("etcworlds.pw.admin");
+                if (allowed) { plugin.pocketRulesGUI().open(p, here.worldName); return true; }
+                s.sendMessage(ChatColor.YELLOW + "No tienes permiso para editar rules de este pocketworld. Abriendo el tuyo...");
+            }
+            targetUuid = p.getUniqueId();
+        }
+
+        PocketWorld pw = plugin.pocketWorlds().get(targetUuid);
+        if (pw == null) {
+            s.sendMessage(ChatColor.RED + (a.length >= 2 ? a[1] + " no tiene" : "No tienes") + " pocketworld.");
+            return true;
+        }
+        plugin.pocketRulesGUI().open(p, pw.worldName);
+        return true;
+    }
+
     private boolean admin(CommandSender s, String[] a) {
         if (!s.hasPermission("etcworlds.pw.admin")) { noPerm(s); return true; }
         if (a.length < 3 || !a[1].equalsIgnoreCase("delete")) {
@@ -315,12 +411,17 @@ public class PocketWorldCommand implements CommandExecutor, TabCompleter {
         s.sendMessage(ChatColor.YELLOW + "/pw delete confirm     " + ChatColor.GRAY + "Borra el tuyo");
         s.sendMessage(ChatColor.YELLOW + "/pw info               " + ChatColor.GRAY + "Info de tu pocketworld");
         s.sendMessage(ChatColor.YELLOW + "/pw list               " + ChatColor.GRAY + "Lista todos los pocketworlds");
-        s.sendMessage(ChatColor.YELLOW + "/pw invite <jugador>   " + ChatColor.GRAY + "Da acceso");
+        s.sendMessage(ChatColor.YELLOW + "/pw invite <jugador>   " + ChatColor.GRAY + "Da acceso (entrar + construir)");
         s.sendMessage(ChatColor.YELLOW + "/pw kick <jugador>     " + ChatColor.GRAY + "Quita acceso");
+        s.sendMessage(ChatColor.YELLOW + "/pw useradd <jugador>  " + ChatColor.GRAY + "Permite editar tus rules");
+        s.sendMessage(ChatColor.YELLOW + "/pw userremove <jug.>  " + ChatColor.GRAY + "Quita permiso de editar rules");
         s.sendMessage(ChatColor.YELLOW + "/pw visit <jugador>    " + ChatColor.GRAY + "Ir al de otro (si invitado)");
         s.sendMessage(ChatColor.YELLOW + "/pw setspawn           " + ChatColor.GRAY + "Define spawn dentro del tuyo");
-        if (s.hasPermission("etcworlds.pw.admin"))
+        s.sendMessage(ChatColor.YELLOW + "/pw rules              " + ChatColor.GRAY + "GUI de flags del pocketworld donde estas");
+        if (s.hasPermission("etcworlds.pw.admin")) {
+            s.sendMessage(ChatColor.YELLOW + "/pw rules <jugador>    " + ChatColor.GRAY + "Admin: edita rules del PW de otro");
             s.sendMessage(ChatColor.YELLOW + "/pw admin delete <j>   " + ChatColor.GRAY + "Admin: borra el de otro");
+        }
     }
 
     private void noPerm(CommandSender s) {
@@ -331,19 +432,31 @@ public class PocketWorldCommand implements CommandExecutor, TabCompleter {
     public List<String> onTabComplete(@NotNull CommandSender s, @NotNull Command c, @NotNull String l, @NotNull String[] a) {
         if (a.length == 1) {
             List<String> base = new ArrayList<>(List.of("tp", "create", "reset", "delete", "list", "info",
-                    "invite", "kick", "visit", "setspawn", "help"));
+                    "invite", "kick", "useradd", "userremove", "visit", "setspawn", "rules", "help"));
             if (s.hasPermission("etcworlds.pw.admin")) base.add("admin");
             return base.stream().filter(x -> x.startsWith(a[0].toLowerCase())).toList();
         }
-        if (a.length == 2 && (a[0].equalsIgnoreCase("invite") || a[0].equalsIgnoreCase("kick")
-                || a[0].equalsIgnoreCase("visit"))) {
+        if (a.length == 2 && (a[0].equalsIgnoreCase("invite")
+                || a[0].equalsIgnoreCase("kick") || a[0].equalsIgnoreCase("visit")
+                || a[0].equalsIgnoreCase("useradd") || a[0].equalsIgnoreCase("userremove"))) {
             List<String> names = new ArrayList<>();
             for (Player p : Bukkit.getOnlinePlayers()) names.add(p.getName());
             return names;
         }
-        if (a.length == 2 && (a[0].equalsIgnoreCase("reset") || a[0].equalsIgnoreCase("delete")))
+        if (a.length == 2 && a[0].equalsIgnoreCase("reset"))
             return List.of("confirm");
+        if (a.length == 2 && a[0].equalsIgnoreCase("delete")) {
+            return List.of("confirm");
+        }
         if (a.length == 2 && a[0].equalsIgnoreCase("admin")) return List.of("delete");
+        if (a.length == 2 && a[0].equalsIgnoreCase("rules") && s.hasPermission("etcworlds.pw.admin")) {
+            List<String> names = new ArrayList<>();
+            for (PocketWorld pw : plugin.pocketWorlds().all()) {
+                OfflinePlayer op = Bukkit.getOfflinePlayer(pw.owner);
+                if (op.getName() != null) names.add(op.getName());
+            }
+            return names;
+        }
         if (a.length == 3 && a[0].equalsIgnoreCase("admin") && a[1].equalsIgnoreCase("delete")) {
             List<String> names = new ArrayList<>();
             for (PocketWorld pw : plugin.pocketWorlds().all()) {

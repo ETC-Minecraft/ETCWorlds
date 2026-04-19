@@ -13,8 +13,11 @@ import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.FoodLevelChangeEvent;
+import org.bukkit.event.player.PlayerBucketEmptyEvent;
+import org.bukkit.event.player.PlayerBucketFillEvent;
 import org.bukkit.event.player.PlayerChangedWorldEvent;
 import org.bukkit.event.player.PlayerCommandPreprocessEvent;
+import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerRespawnEvent;
 
@@ -79,17 +82,105 @@ public class WorldRulesListener implements Listener {
 
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void onBlockBreak(BlockBreakEvent e) {
-        WorldRules r = plugin.worlds().getRules(e.getPlayer().getWorld().getName());
-        if (r != null && !r.buildEnabled && !e.getPlayer().hasPermission("etcworlds.bypass.access"))
+        Player p = e.getPlayer();
+        String world = p.getWorld().getName();
+        if (denyPocketBuild(p, world)) { e.setCancelled(true); return; }
+        WorldRules r = plugin.worlds().getRules(world);
+        if (r != null && !r.buildEnabled && !p.hasPermission("etcworlds.bypass.access"))
             e.setCancelled(true);
     }
 
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void onBlockPlace(BlockPlaceEvent e) {
-        WorldRules r = plugin.worlds().getRules(e.getPlayer().getWorld().getName());
-        if (r != null && !r.buildEnabled && !e.getPlayer().hasPermission("etcworlds.bypass.access"))
+        Player p = e.getPlayer();
+        String world = p.getWorld().getName();
+        if (denyPocketBuild(p, world)) { e.setCancelled(true); return; }
+        WorldRules r = plugin.worlds().getRules(world);
+        if (r != null && !r.buildEnabled && !p.hasPermission("etcworlds.bypass.access"))
             e.setCancelled(true);
     }
+
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    public void onBucketEmpty(PlayerBucketEmptyEvent e) {
+        Player p = e.getPlayer();
+        if (denyPocketBuild(p, p.getWorld().getName())) e.setCancelled(true);
+    }
+
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    public void onBucketFill(PlayerBucketFillEvent e) {
+        Player p = e.getPlayer();
+        if (denyPocketBuild(p, p.getWorld().getName())) e.setCancelled(true);
+    }
+
+    /** Bloquea interacciones (puertas, cofres, palancas, botones, etc.) en pocketworlds para no-invitados,
+     *  o globalmente si interactEnabled=false en mundos no-pocket. */
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    public void onInteract(PlayerInteractEvent e) {
+        if (e.getAction() != org.bukkit.event.block.Action.RIGHT_CLICK_BLOCK) return;
+        if (e.getClickedBlock() == null) return;
+        Player p = e.getPlayer();
+        String world = p.getWorld().getName();
+        org.bukkit.Material m = e.getClickedBlock().getType();
+        if (!isInteractiveBlock(m)) return;
+
+        // Pocketworld: bloquear si no es trusted
+        if (plugin.pocketWorlds() != null && plugin.pocketWorlds().isPocketWorld(world)) {
+            if (!p.hasPermission("etcworlds.pw.bypass") && !p.hasPermission("etcworlds.bypass.access") && !p.isOp()
+                    && !plugin.pocketWorlds().canBuild(p.getUniqueId(), world)) {
+                e.setCancelled(true);
+                return;
+            }
+        }
+        // Mundos no-pocket: usar regla global
+        WorldRules r = plugin.worlds().getRules(world);
+        if (r != null && !r.interactEnabled && !p.hasPermission("etcworlds.bypass.access"))
+            e.setCancelled(true);
+    }
+
+    private static boolean isInteractiveBlock(org.bukkit.Material m) {
+        if (m == null) return false;
+        String n = m.name();
+        if (m == org.bukkit.Material.CRAFTING_TABLE || m == org.bukkit.Material.ENCHANTING_TABLE
+                || m == org.bukkit.Material.ANVIL || m == org.bukkit.Material.CHIPPED_ANVIL
+                || m == org.bukkit.Material.DAMAGED_ANVIL || m == org.bukkit.Material.GRINDSTONE
+                || m == org.bukkit.Material.LOOM || m == org.bukkit.Material.STONECUTTER
+                || m == org.bukkit.Material.SMITHING_TABLE || m == org.bukkit.Material.CARTOGRAPHY_TABLE
+                || m == org.bukkit.Material.LEVER || m == org.bukkit.Material.REPEATER
+                || m == org.bukkit.Material.COMPARATOR || m == org.bukkit.Material.NOTE_BLOCK
+                || m == org.bukkit.Material.JUKEBOX || m == org.bukkit.Material.LECTERN
+                || m == org.bukkit.Material.BEACON || m == org.bukkit.Material.BELL
+                || m == org.bukkit.Material.CAKE || m == org.bukkit.Material.RESPAWN_ANCHOR
+                || m == org.bukkit.Material.COMPOSTER) return true;
+        return n.endsWith("_DOOR") || n.endsWith("_TRAPDOOR") || n.endsWith("_BUTTON")
+                || n.endsWith("_FENCE_GATE") || n.endsWith("_SHULKER_BOX")
+                || n.endsWith("_BED") || n.endsWith("_SIGN") || n.endsWith("_HANGING_SIGN")
+                || n.contains("CHEST") || n.contains("BARREL") || n.contains("FURNACE")
+                || n.contains("HOPPER") || n.contains("DISPENSER") || n.contains("DROPPER")
+                || n.contains("BREWING_STAND") || n.contains("CANDLE");
+    }
+
+    /**
+     * Devuelve true si el jugador NO puede construir en este pocketworld.
+     * Para mundos no-pocket retorna false (no aplica el bloqueo).
+     * Bypass: ops o permiso etcworlds.pw.bypass / etcworlds.bypass.access.
+     */
+    private boolean denyPocketBuild(Player p, String world) {
+        if (plugin.pocketWorlds() == null) return false;
+        if (!plugin.pocketWorlds().isPocketWorld(world)) return false;
+        if (p.hasPermission("etcworlds.pw.bypass") || p.hasPermission("etcworlds.bypass.access") || p.isOp())
+            return false;
+        if (plugin.pocketWorlds().canBuild(p.getUniqueId(), world)) return false;
+        // mensaje suave para evitar spam (1/seg) — uso simple via metadata
+        long now = System.currentTimeMillis();
+        Long last = lastDenyMsg.get(p.getUniqueId());
+        if (last == null || now - last > 1500) {
+            p.sendMessage(ChatColor.RED + "No tienes permiso para construir aqui. Pide al dueno con /pw add <tu>.");
+            lastDenyMsg.put(p.getUniqueId(), now);
+        }
+        return true;
+    }
+
+    private final java.util.Map<java.util.UUID, Long> lastDenyMsg = new java.util.concurrent.ConcurrentHashMap<>();
 
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void onDamage(EntityDamageEvent e) {

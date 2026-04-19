@@ -45,6 +45,8 @@ public class WorldRules {
     public long fixedTimeTick = 6000;         // mediodía si time-locked
     public boolean fly = false;               // fuerza fly al entrar
     public boolean buildEnabled = true;       // permitir colocar/romper bloques
+    public boolean interactEnabled = true;    // permitir interactuar con bloques (puertas, cofres, palancas, etc.)
+    public boolean immediateRespawn = false;  // gamerule DO_IMMEDIATE_RESPAWN
     public boolean hunger = true;             // si no, sacia automáticamente
     public boolean autoSave = true;
     public int viewDistance = -1;             // -1 = usar el global
@@ -122,6 +124,8 @@ public class WorldRules {
         r.fixedTimeTick = s.getLong("fixed-time-tick", 6000);
         r.fly = s.getBoolean("force-fly", false);
         r.buildEnabled = s.getBoolean("build-enabled", true);
+        r.interactEnabled = s.getBoolean("interact-enabled", true);
+        r.immediateRespawn = s.getBoolean("immediate-respawn", false);
         r.hunger = s.getBoolean("hunger", true);
         r.autoSave = s.getBoolean("auto-save", true);
         r.viewDistance = s.getInt("view-distance", -1);
@@ -192,6 +196,8 @@ public class WorldRules {
         s.set("fixed-time-tick", fixedTimeTick);
         s.set("force-fly", fly);
         s.set("build-enabled", buildEnabled);
+        s.set("interact-enabled", interactEnabled);
+        s.set("immediate-respawn", immediateRespawn);
         s.set("hunger", hunger);
         s.set("auto-save", autoSave);
         s.set("view-distance", viewDistance);

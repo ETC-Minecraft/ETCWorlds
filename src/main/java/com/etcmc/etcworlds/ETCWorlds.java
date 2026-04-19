@@ -3,6 +3,7 @@ package com.etcmc.etcworlds;
 import com.etcmc.etcworlds.command.PocketWorldCommand;
 import com.etcmc.etcworlds.command.WorldTpCommand;
 import com.etcmc.etcworlds.command.WorldsCommand;
+import com.etcmc.etcworlds.gui.PocketRulesGUI;
 import com.etcmc.etcworlds.gui.WorldsGUI;
 import com.etcmc.etcworlds.hook.ETCCoreHook;
 import com.etcmc.etcworlds.hook.PlaceholderHook;
@@ -42,6 +43,7 @@ public final class ETCWorlds extends JavaPlugin {
     private InstanceManager instanceManager;
     private TemplateCloneService templateCloneService;
     private WorldsGUI worldsGUI;
+    private PocketRulesGUI pocketRulesGUI;
     private CustomPortalManager customPortalManager;
     private PocketWorldManager pocketWorldManager;
 
@@ -73,10 +75,13 @@ public final class ETCWorlds extends JavaPlugin {
         this.instanceManager = new InstanceManager(this);
         this.templateCloneService = new TemplateCloneService(this);
         this.worldsGUI = new WorldsGUI(this);
+        this.pocketRulesGUI = new PocketRulesGUI(this);
         this.customPortalManager = new CustomPortalManager(this);
         this.customPortalManager.load();
         this.pocketWorldManager = new PocketWorldManager(this);
         this.pocketWorldManager.load();
+        // Limpia mundos marcados como pending-delete (Folia: no se pudo unload en runtime).
+        this.pocketWorldManager.processPendingDeletes();
 
         // Comandos
         bind("etcworlds", new WorldsCommand(this));
@@ -97,6 +102,7 @@ public final class ETCWorlds extends JavaPlugin {
         Bukkit.getPluginManager().registerEvents(new OneblockListener(this), this);
         Bukkit.getPluginManager().registerEvents(new CustomPortalListener(this), this);
         Bukkit.getPluginManager().registerEvents(this.worldsGUI, this);
+        Bukkit.getPluginManager().registerEvents(this.pocketRulesGUI, this);
 
         // Tareas periódicas
         this.idleWorldUnloader.start();
@@ -157,6 +163,7 @@ public final class ETCWorlds extends JavaPlugin {
     public InstanceManager instances() { return instanceManager; }
     public TemplateCloneService templates() { return templateCloneService; }
     public WorldsGUI gui() { return worldsGUI; }
+    public PocketRulesGUI pocketRulesGUI() { return pocketRulesGUI; }
     public CustomPortalManager portals() { return customPortalManager; }
     public PocketWorldManager pocketWorlds() { return pocketWorldManager; }
 }

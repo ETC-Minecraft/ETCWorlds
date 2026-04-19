@@ -73,13 +73,40 @@ public class WorldsManager {
             YamlConfiguration y = YamlConfiguration.loadConfiguration(registryFile);
             ConfigurationSection ws = y.getConfigurationSection("worlds");
             if (ws != null) {
-                for (String name : ws.getKeys(false)) {
-                    String folder = ws.getString(name + ".folder", dirName + "/" + name);
-                    registryFolder.put(name, folder);
-                    loadRulesFor(name, folder);
+                for (String key : ws.getKeys(false)) {
+                    ConfigurationSection sub = ws.getConfigurationSection(key);
+                    // Formato nuevo: worlds.<Categoria>.<nombre>.folder
+                    // Formato viejo: worlds.<nombre>.folder
+                    if (sub != null && sub.getString("folder") == null && !sub.getKeys(false).isEmpty()) {
+                        // categoria
+                        for (String name : sub.getKeys(false)) {
+                            String folder = sub.getString(name + ".folder", dirName + "/" + name);
+                            registryFolder.put(name, folder);
+                            loadRulesFor(name, folder);
+                        }
+                    } else {
+                        String folder = ws.getString(key + ".folder", dirName + "/" + key);
+                        registryFolder.put(key, folder);
+                        loadRulesFor(key, folder);
+                    }
                 }
             }
         }
+    }
+
+    /**
+     * Decide la categoria con la que se guarda un mundo en worlds-registry.yml.
+     * - Nativos: world / world_nether / world_the_end o cualquier mundo cuya carpeta
+     *   este en la raiz del world container (sin subcarpetas).
+     * - PocketWorlds: carpeta dentro de "pocketworld" (mundos/pocketworld/...).
+     * - Creados: el resto.
+     */
+    private String categoryFor(String name, String folderPath) {
+        String norm = folderPath == null ? "" : folderPath.replace('\\', '/');
+        if (norm.contains("/pocketworld/") || norm.startsWith("pocketworld/")) return "PocketWorlds";
+        if (name.equals("world") || name.equals("world_nether") || name.equals("world_the_end")) return "Nativos";
+        if (!norm.contains("/")) return "Nativos";
+        return "Creados";
     }
 
     private void loadRulesFor(String name, String folderPath) {
@@ -129,8 +156,10 @@ public class WorldsManager {
     public void saveRegistry() {
         if (registryFile == null) return;
         YamlConfiguration y = new YamlConfiguration();
-        for (Map.Entry<String, String> e : registryFolder.entrySet())
-            y.set("worlds." + e.getKey() + ".folder", e.getValue());
+        for (Map.Entry<String, String> e : registryFolder.entrySet()) {
+            String cat = categoryFor(e.getKey(), e.getValue());
+            y.set("worlds." + cat + "." + e.getKey() + ".folder", e.getValue());
+        }
         try { y.save(registryFile); }
         catch (IOException ex) { plugin.getLogger().log(Level.WARNING, "No se pudo guardar registry", ex); }
     }
@@ -157,17 +186,32 @@ public class WorldsManager {
     // ===========================================================================================
 
     public synchronized World createWorld(String name, WorldRules r) throws IllegalStateException {
+        return createWorld(name, r, null);
+    }
+
+    /**
+     * Crea un mundo dentro de un subdirectorio opcional bajo {@code worlds-folder}.
+     * Por ejemplo, con {@code worlds-folder=mundos} y {@code subfolder=pocketworld},
+     * el mundo se crea en {@code mundos/pocketworld/<name>}.
+     * Si {@code subfolder} es {@code null} o blanco, se usa {@code mundos/<name>} como antes.
+     */
+    public synchronized World createWorld(String name, WorldRules r, String subfolder) throws IllegalStateException {
         if (Bukkit.getWorld(name) != null)
             throw new IllegalStateException("Ya existe un mundo cargado con ese nombre.");
         if (registryFolder.containsKey(name))
             throw new IllegalStateException("Ya existe un mundo registrado con ese nombre.");
 
-        // Carpeta destino dentro de worlds-folder
+        // Carpeta destino dentro de worlds-folder (+ subfolder opcional)
         String dirName = plugin.getConfig().getString("worlds-folder", "mundos");
-        String folderPath = dirName + "/" + name;
+        String base = (subfolder == null || subfolder.isBlank()) ? dirName : dirName + "/" + subfolder;
+        String folderPath = base + "/" + name;
         File targetDir = new File(Bukkit.getWorldContainer(), folderPath);
         if (targetDir.exists())
             throw new IllegalStateException("La carpeta destino ya existe: " + targetDir);
+        // Asegurar que el subdirectorio padre existe
+        File parent = targetDir.getParentFile();
+        if (parent != null && !parent.exists() && !parent.mkdirs())
+            plugin.getLogger().warning("[ETCWorlds] No se pudo crear carpeta padre: " + parent);
 
         // Datapack altura custom
         if (r.customMinY != Integer.MIN_VALUE && r.customMaxY != Integer.MIN_VALUE) {
@@ -272,14 +316,69 @@ public class WorldsManager {
             Location fbSpawn = fb.getSpawnLocation();
             for (Player p : new ArrayList<>(w.getPlayers()))
                 p.teleportAsync(fbSpawn); // async es legal en cualquier hilo en Folia
-            if (!Bukkit.unloadWorld(w, false)) return false;
+
+            boolean unloaded;
+            if (FoliaWorldFactory.isFolia()) {
+                // Bukkit.unloadWorld lanza UnsupportedOperationException en Folia.
+                // Usamos NMS directo para descargar.
+                unloaded = FoliaWorldFactory.unloadWorld(plugin, w, false);
+            } else {
+                try {
+                    unloaded = Bukkit.unloadWorld(w, false);
+                } catch (UnsupportedOperationException ex) {
+                    plugin.getLogger().warning("[ETCWorlds] unloadWorld no soportado: " + ex.getMessage());
+                    return false;
+                }
+            }
+            if (!unloaded) {
+                plugin.getLogger().warning("[ETCWorlds] No se pudo descargar '" + name + "'.");
+                return false;
+            }
         }
         File dir = worldDirOf(name);
         rules.remove(name);
         registryFolder.remove(name);
         saveRegistry();
+        removeFromBukkitYml(name);
         if (dir != null && dir.exists()) return WorldFiles.deleteRecursive(dir);
         return true;
+    }
+
+    /**
+     * Quita el mundo del registro de ETCWorlds y de bukkit.yml SIN borrar archivos
+     * y SIN intentar descargarlo. Sirve para "olvidar" un mundo que no se pudo unload
+     * (Folia) y permitir crear otro con nombre distinto en su lugar.
+     */
+    public synchronized void forgetWorld(String name) {
+        String resolved = resolveWorldName(name);
+        if (resolved == null) return;
+        rules.remove(resolved);
+        registryFolder.remove(resolved);
+        saveRegistry();
+        removeFromBukkitYml(resolved);
+    }
+
+    /** Borra la entrada worlds.<folderPath>.generator de bukkit.yml para evitar reload al reiniciar. */
+    private void removeFromBukkitYml(String name) {
+        try {
+            File bukkitYml = new File(Bukkit.getWorldContainer().getParent(), "bukkit.yml");
+            if (!bukkitYml.exists()) return;
+            org.bukkit.configuration.file.YamlConfiguration cfg =
+                    org.bukkit.configuration.file.YamlConfiguration.loadConfiguration(bukkitYml);
+            org.bukkit.configuration.ConfigurationSection ws = cfg.getConfigurationSection("worlds");
+            if (ws == null) return;
+            boolean changed = false;
+            for (String key : new ArrayList<>(ws.getKeys(false))) {
+                String simple = key.contains("/") ? key.substring(key.lastIndexOf('/') + 1) : key;
+                if (simple.equalsIgnoreCase(name)) {
+                    ws.set(key, null);
+                    changed = true;
+                }
+            }
+            if (changed) cfg.save(bukkitYml);
+        } catch (Exception ex) {
+            plugin.getLogger().warning("[ETCWorlds] No se pudo limpiar bukkit.yml: " + ex.getMessage());
+        }
     }
 
     public synchronized World loadWorld(String name) {
@@ -306,6 +405,9 @@ public class WorldsManager {
         World w = Bukkit.getWorld(name);
         if (w == null) return true;
         if (!w.getPlayers().isEmpty()) return false;
+        if (FoliaWorldFactory.isFolia()) {
+            return FoliaWorldFactory.unloadWorld(plugin, w, save);
+        }
         try {
             return Bukkit.unloadWorld(w, save);
         } catch (UnsupportedOperationException foliaEx) {
@@ -318,8 +420,48 @@ public class WorldsManager {
 
     public synchronized boolean importExisting(String name, String relativeFolder) {
         if (registryFolder.containsKey(name)) return false;
-        File f = new File(Bukkit.getWorldContainer(), relativeFolder);
-        if (!f.exists() || !new File(f, "level.dat").exists()) return false;
+        File source = new File(Bukkit.getWorldContainer(), relativeFolder);
+        if (!source.exists() || !new File(source, "level.dat").exists()) return false;
+
+        // Si el mundo NO esta ya bajo worlds-folder, lo movemos fisicamente alli.
+        // Asi tras importar /ecw import MundoRaiz queda en mundos/MundoRaiz.
+        String dirName = plugin.getConfig().getString("worlds-folder", "mundos");
+        String targetRel = dirName + "/" + name;
+        File target = new File(Bukkit.getWorldContainer(), targetRel);
+
+        boolean alreadyInPlace;
+        try {
+            alreadyInPlace = source.getCanonicalFile().equals(target.getCanonicalFile());
+        } catch (IOException ex) {
+            alreadyInPlace = source.getAbsoluteFile().equals(target.getAbsoluteFile());
+        }
+
+        if (!alreadyInPlace) {
+            if (target.exists()) {
+                plugin.getLogger().warning("[ETCWorlds] Import: ya existe destino " + target);
+                return false;
+            }
+            // Si el mundo esta cargado en Bukkit (improbable al importar), abortar.
+            if (Bukkit.getWorld(name) != null) {
+                plugin.getLogger().warning("[ETCWorlds] Import: el mundo " + name + " esta cargado, no se puede mover.");
+                return false;
+            }
+            File parent = target.getParentFile();
+            if (parent != null && !parent.exists() && !parent.mkdirs()) {
+                plugin.getLogger().warning("[ETCWorlds] Import: no se pudo crear " + parent);
+                return false;
+            }
+            try {
+                java.nio.file.Files.move(source.toPath(), target.toPath());
+                plugin.getLogger().info("[ETCWorlds] Import: movido " + source + " -> " + target);
+            } catch (IOException ex) {
+                plugin.getLogger().log(Level.WARNING,
+                        "[ETCWorlds] Import: no se pudo mover " + source + " a " + target, ex);
+                return false;
+            }
+            relativeFolder = targetRel;
+        }
+
         registryFolder.put(name, relativeFolder);
         if (!rules.containsKey(name)) {
             WorldRules r = new WorldRules();
@@ -343,6 +485,7 @@ public class WorldsManager {
         w.setAutoSave(r.autoSave);
         w.setGameRule(org.bukkit.GameRule.KEEP_INVENTORY, r.keepInventoryOnDeath);
         w.setGameRule(org.bukkit.GameRule.FALL_DAMAGE, r.fallDamage);
+        w.setGameRule(org.bukkit.GameRule.DO_IMMEDIATE_RESPAWN, r.immediateRespawn);
         w.setGameRule(org.bukkit.GameRule.DO_WEATHER_CYCLE, r.weatherEnabled && !r.weatherLocked);
         w.setGameRule(org.bukkit.GameRule.DO_DAYLIGHT_CYCLE, !r.timeLocked);
         if (r.timeLocked) w.setTime(r.fixedTimeTick);

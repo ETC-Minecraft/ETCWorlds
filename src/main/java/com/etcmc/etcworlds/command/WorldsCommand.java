@@ -71,7 +71,7 @@ public class WorldsCommand implements CommandExecutor, TabCompleter {
                 case "setspawn", "spawn" -> setSpawn(s, a);
                 case "setlobby" -> setLobby(s, a);
                 case "reload" -> reload(s);
-                case "list" -> { list(s); yield true; }
+                case "list" -> { list(s, a); yield true; }
                 case "info" -> info(s, a);
                 case "tp" -> tp(s, a);
                 case "templates" -> { templates(s); yield true; }
@@ -394,16 +394,56 @@ public class WorldsCommand implements CommandExecutor, TabCompleter {
         return true;
     }
 
-    private void list(CommandSender s) {
-        s.sendMessage(ChatColor.GOLD + "=== Mundos administrados ===");
-        for (String name : plugin.worlds().getManagedNames()) {
+    private void list(CommandSender s, String[] a) {
+        // /ecw list [all|created|pocket]
+        // Por defecto oculta los pocketworlds (pueden ser muchos) para no llenar la lista.
+        String filter = a.length >= 2 ? a[1].toLowerCase(Locale.ROOT) : "created";
+        boolean showPocket;
+        boolean showRegular;
+        switch (filter) {
+            case "all", "todo", "todos", "*" -> { showPocket = true; showRegular = true; }
+            case "pocket", "pw", "pocketworld", "pocketworlds" -> { showPocket = true; showRegular = false; }
+            case "created", "creados", "normal", "worlds", "mundos" -> { showPocket = false; showRegular = true; }
+            default -> {
+                s.sendMessage(ChatColor.YELLOW + "Uso: /ecw list [all|created|pocket]");
+                return;
+            }
+        }
+
+        java.util.List<String> all = new ArrayList<>(plugin.worlds().getManagedNames());
+        java.util.Collections.sort(all, String.CASE_INSENSITIVE_ORDER);
+
+        int totalPocket = 0, totalRegular = 0, shown = 0;
+        StringBuilder header = new StringBuilder("=== Mundos administrados");
+        if (filter.equals("pocket") || filter.equals("pw") || filter.equals("pocketworld") || filter.equals("pocketworlds"))
+            header.append(" [pocket]");
+        else if (filter.equals("created") || filter.equals("creados") || filter.equals("normal") || filter.equals("worlds") || filter.equals("mundos"))
+            header.append(" [creados]");
+        else header.append(" [all]");
+        header.append(" ===");
+        s.sendMessage(ChatColor.GOLD + header.toString());
+
+        for (String name : all) {
+            boolean isPocket = plugin.pocketWorlds() != null && plugin.pocketWorlds().isPocketWorld(name);
+            if (isPocket) totalPocket++; else totalRegular++;
+            if (isPocket && !showPocket) continue;
+            if (!isPocket && !showRegular) continue;
             World w = Bukkit.getWorld(name);
-            String state = w != null ? ChatColor.GREEN + "cargado(" + w.getPlayers().size() + ")" : ChatColor.GRAY + "descargado";
+            String state = w != null
+                    ? ChatColor.GREEN + "cargado(" + w.getPlayers().size() + ")"
+                    : ChatColor.GRAY + "descargado";
             WorldRules r = plugin.worlds().getRules(name);
             String tmpl = r != null ? r.template.name() : "?";
-            s.sendMessage(ChatColor.YELLOW + name + " " + state + ChatColor.DARK_GRAY + " [" + tmpl + "]");
+            String tag = isPocket ? ChatColor.LIGHT_PURPLE + " (PW)" : "";
+            s.sendMessage(ChatColor.YELLOW + name + tag + " " + state
+                    + ChatColor.DARK_GRAY + " [" + tmpl + "]");
+            shown++;
         }
-        s.sendMessage(ChatColor.GRAY + "Total: " + plugin.worlds().getManagedNames().size());
+        s.sendMessage(ChatColor.GRAY + "Mostrados: " + ChatColor.WHITE + shown
+                + ChatColor.GRAY + "  ·  Total: " + ChatColor.WHITE + (totalPocket + totalRegular)
+                + ChatColor.GRAY + " (creados: " + totalRegular + ", pocket: " + totalPocket + ")");
+        if (filter.equals("created") && totalPocket > 0)
+            s.sendMessage(ChatColor.DARK_GRAY + "Usa /ecw list all  o  /ecw list pocket  para ver pocketworlds.");
     }
 
     private boolean info(CommandSender s, String[] a) {
@@ -724,6 +764,8 @@ public class WorldsCommand implements CommandExecutor, TabCompleter {
             return List.of("on", "off");
         if (a.length == 3 && (a[0].equalsIgnoreCase("difficulty") || a[0].equalsIgnoreCase("diff")))
             return List.of("peaceful", "easy", "normal", "hard");
+        if (a.length == 2 && a[0].equalsIgnoreCase("list"))
+            return List.of("all", "created", "pocket");
         return List.of();
     }
 

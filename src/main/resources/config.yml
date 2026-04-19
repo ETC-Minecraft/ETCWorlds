@@ -74,12 +74,19 @@ safe-teleport:
 # limitada. Se accede con /pw (alias /pocketworld /mundo /isla).
 pocketworlds:
   enabled: true
+  # Subcarpeta dentro de worlds-folder donde se almacenan los pocketworlds.
+  # Ejemplo final con worlds-folder=mundos: mundos/pocketworld/pw_xxxxxxxx
+  subfolder: "pocketworld"
   # Tamano del worldborder centrado en (0,0). 1000 = area de 1000x1000 bloques.
   border-size: 1000
   # Si el jugador tiene fly automatico al entrar a su pocketworld.
   fly: true
   # Si el dano por caida esta activado.
   fall-damage: false
+  # Default keep-inventory ON en pocketworlds (anti-trampas). Solo admin puede cambiarlo via /pw rules.
+  default-keep-inventory: true
+  # Default respawn inmediato (sin pantalla 'You died'). Solo admin puede cambiarlo.
+  default-immediate-respawn: true
   # Mensaje al entrar. {player} = nombre.
   enter-message: "&aBienvenido a tu PocketWorld, &e{player}&a."
 

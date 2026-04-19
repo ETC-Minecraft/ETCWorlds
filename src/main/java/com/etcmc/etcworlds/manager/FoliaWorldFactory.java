@@ -85,6 +85,86 @@ public final class FoliaWorldFactory {
         }
     }
 
+    /**
+     * Descarga un mundo en Folia via NMS. Debe llamarse desde el GlobalRegionScheduler.
+     * Receta basada en TheNextLvl/worlds (MIT) para Folia 1.21.11.
+     *
+     * Pasos:
+     *   1. Quitar de CraftServer.worlds (reflection)
+     *   2. console.removeLevel(handle)
+     *   3. Marcar regiones non-schedulable
+     *   4. Cerrar chunkSource + entityManager + levelStorageAccess
+     *
+     * @return true si se pudo descargar, false si no.
+     */
+    public static boolean unloadWorld(ETCWorlds plugin, World world, boolean save) {
+        try {
+            return unloadWorldImpl(plugin, world, save);
+        } catch (Throwable t) {
+            plugin.getLogger().warning("[ETCWorlds] FoliaWorldFactory fallo descargando '"
+                    + world.getName() + "': " + t.getClass().getSimpleName() + ": " + t.getMessage());
+            t.printStackTrace();
+            return false;
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static boolean unloadWorldImpl(ETCWorlds plugin, World world, boolean save) throws Exception {
+        final CraftServer server = (CraftServer) Bukkit.getServer();
+        final MinecraftServer console = server.getServer();
+        final var handle = ((org.bukkit.craftbukkit.CraftWorld) world).getHandle();
+
+        // Validaciones tipo SimpleFoliaSupport.canUnload
+        if (console.getLevel(handle.dimension()) == null) return false;
+        if (handle.dimension() == net.minecraft.world.level.Level.OVERWORLD) return false;
+        if (!handle.players().isEmpty()) {
+            plugin.getLogger().warning("[ETCWorlds] No se puede descargar '" + world.getName()
+                    + "' con jugadores dentro (" + handle.players().size() + ").");
+            return false;
+        }
+
+        // Disparar WorldUnloadEvent
+        if (!new org.bukkit.event.world.WorldUnloadEvent(world).callEvent()) return false;
+
+        // Save sincrono si se pide
+        if (save) {
+            try { world.save(); } catch (Throwable ignored) {}
+        }
+
+        // 1) cerrar chunkSource + entity manager + storage access
+        try {
+            handle.getChunkSource().close(false);
+            io.papermc.paper.FeatureHooks.closeEntityManager(handle, save);
+            handle.levelStorageAccess.close();
+        } catch (Exception e) {
+            plugin.getLogger().warning("[ETCWorlds] closeLevel fallo: " + e.getMessage());
+        }
+
+        // 2) quitar del Map<String,World> CraftServer.worlds (sin esto Bukkit.getWorld() seguiria devolviendolo)
+        try {
+            java.lang.reflect.Field f = server.getClass().getDeclaredField("worlds");
+            f.trySetAccessible();
+            ((java.util.Map<String, World>) f.get(server))
+                    .remove(world.getName().toLowerCase(Locale.ROOT));
+        } catch (NoSuchFieldException | IllegalAccessException e) {
+            plugin.getLogger().warning("[ETCWorlds] No se pudo quitar '" + world.getName()
+                    + "' del map de mundos: " + e.getMessage());
+            return false;
+        }
+
+        // 3) MinecraftServer.removeLevel + marcar regiones no-schedulables
+        console.removeLevel(handle);
+        try {
+            handle.regioniser.computeForAllRegionsUnsynchronised(regionThread -> {
+                if (regionThread.getData().world != handle) return;
+                regionThread.getData().getRegionSchedulingHandle().markNonSchedulable();
+            });
+        } catch (Throwable ignored) {
+            // si la API cambia, el unload ya esta hecho lo demas es limpieza
+        }
+        return true;
+    }
+
     private static World createWorldImpl(ETCWorlds plugin, WorldCreator creator) throws Exception {
         final CraftServer server = (CraftServer) Bukkit.getServer();
         final MinecraftServer console = server.getServer();
@@ -194,6 +274,17 @@ public final class FoliaWorldFactory {
 
         primaryLevelData.setInitialized(false);
         console.addLevel(serverLevel);
+        // OJO: si dejamos setInitialized(false) e invocamos initWorld(),
+        // MinecraftServer.setInitialSpawn buscara un bloque solido cargando chunks
+        // SINCRONICAMENTE — eso cuelga ~15s en mundos Void (no hay bloques solidos)
+        // y dispara el FoliaWatchdog. Plantamos el spawn nosotros y marcamos
+        // initialized=true para saltarse esa busqueda.
+        try {
+            net.minecraft.core.BlockPos sp = new net.minecraft.core.BlockPos(0, 65, 0);
+            serverLevel.serverLevelData.setSpawn(
+                    net.minecraft.world.level.storage.LevelData.RespawnData.of(dimensionKey, sp, 0f, 0f));
+        } catch (Throwable ignored) {}
+        primaryLevelData.setInitialized(true);
         console.initWorld(serverLevel, primaryLevelData, primaryLevelData.worldGenOptions());
         serverLevel.setSpawnSettings(true);
         FeatureHooks.tickEntityManager(serverLevel);
