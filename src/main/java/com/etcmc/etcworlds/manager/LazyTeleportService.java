@@ -49,17 +49,7 @@ public class LazyTeleportService {
             Bukkit.getGlobalRegionScheduler().run(plugin, task -> {
                 World w2 = plugin.worlds().loadWorld(resolvedName);
                 if (w2 == null) {
-                    player.getScheduler().run(plugin, t -> {
-                        if (FoliaWorldFactory.isFolia()) {
-                            player.sendMessage(org.bukkit.ChatColor.RED
-                                + "El mundo '" + resolvedName + "' no esta cargado."
-                                + org.bukkit.ChatColor.YELLOW
-                                + " En Folia los mundos deben estar configurados antes de iniciar el servidor."
-                                + " Pide a un administrador que configure bukkit.yml y reinicie.");
-                        } else {
-                            send(player, "unknown-world", "{world}", resolvedName);
-                        }
-                    }, null);
+                    player.getScheduler().run(plugin, t -> send(player, "unknown-world", "{world}", resolvedName), null);
                     return;
                 }
                 continueWithTeleport(player, w2, resolvedName, destinationOrNull, enabled, radius, timeoutMs);

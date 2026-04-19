@@ -185,20 +185,11 @@ public class WorldsManager {
         rules.put(name, r);
         registryFolder.put(name, folderPath);
 
-        // En Folia, Bukkit.createWorld() no funciona en tiempo real.
-        // Registramos el mundo y guardamos todo para que cargue en el siguiente reinicio.
-        if (FoliaWorldFactory.isFolia()) {
-            saveRules(name);
-            saveRegistry();
-            saveToBukkitYml(name, folderPath, r);
-            throw new IllegalStateException("FOLIA_REGISTERED:" + name);
-        }
-
         World w = buildAndCreate(name, folderPath, r);
         if (w == null) {
             rules.remove(name);
             registryFolder.remove(name);
-            throw new IllegalStateException("Bukkit no pudo crear el mundo.");
+            throw new IllegalStateException("Bukkit/Folia no pudo crear el mundo. Revisa los logs.");
         }
 
         // Guardar spawn por defecto al centro
@@ -225,10 +216,15 @@ public class WorldsManager {
         BiomeProvider bp = biomeProviderFor(r);
         if (bp != null) wc.biomeProvider(bp);
 
+        // En Folia, Bukkit.createWorld() lanza UnsupportedOperationException.
+        // Usamos NMS directo (FoliaWorldFactory) para crear el ServerLevel.
+        if (FoliaWorldFactory.isFolia()) {
+            return FoliaWorldFactory.createWorld(plugin, wc);
+        }
+
         try {
             return Bukkit.createWorld(wc);
         } catch (UnsupportedOperationException ignored) {
-            // Folia: Bukkit.createWorld() no soportado en tiempo real.
             return null;
         }
     }
