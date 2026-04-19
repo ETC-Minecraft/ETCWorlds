@@ -59,6 +59,8 @@ public class WorldRules {
 
     // === Acceso ===
     public boolean publicAccess = true;
+    public boolean menuVisible  = true;                  // mostrar en /menu de ETCCore
+    public String  displayName  = "";                    // nombre amigable (admin/op only)
     public List<String> whitelist = new ArrayList<>();   // UUIDs o nombres
     public List<String> blacklist = new ArrayList<>();
     public String accessPermission = "";                  // ej. "etcworlds.world.lobby"
@@ -141,6 +143,7 @@ public class WorldRules {
         ConfigurationSection ac = s.getConfigurationSection("access");
         if (ac != null) {
             r.publicAccess = ac.getBoolean("public", true);
+            r.menuVisible  = ac.getBoolean("menu-visible", true);
             r.whitelist = new ArrayList<>(ac.getStringList("whitelist"));
             r.blacklist = new ArrayList<>(ac.getStringList("blacklist"));
             r.accessPermission = ac.getString("permission", "");
@@ -161,6 +164,7 @@ public class WorldRules {
         r.backupEnabled = s.getBoolean("backup.enabled", true);
         r.enterMessage = s.getString("messages.enter", "");
         r.exitMessage  = s.getString("messages.exit",  "");
+        r.displayName  = s.getString("display-name", "");
 
         return r;
     }
@@ -208,6 +212,7 @@ public class WorldRules {
         s.set("border.size", borderSize);
 
         s.set("access.public", publicAccess);
+        s.set("access.menu-visible", menuVisible);
         s.set("access.whitelist", whitelist);
         s.set("access.blacklist", blacklist);
         s.set("access.permission", accessPermission);
@@ -224,6 +229,7 @@ public class WorldRules {
         s.set("backup.enabled", backupEnabled);
         if (!enterMessage.isEmpty()) s.set("messages.enter", enterMessage);
         if (!exitMessage.isEmpty())  s.set("messages.exit",  exitMessage);
+        if (!displayName.isEmpty())  s.set("display-name",   displayName);
     }
 
     public Location spawnLocation(World w) {

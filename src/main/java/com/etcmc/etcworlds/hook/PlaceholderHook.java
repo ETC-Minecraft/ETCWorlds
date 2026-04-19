@@ -6,16 +6,32 @@ import me.clip.placeholderapi.expansion.PlaceholderExpansion;
 import org.bukkit.Bukkit;
 import org.bukkit.OfflinePlayer;
 import org.bukkit.World;
+import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 
 /**
- * Placeholders disponibles:
- *   %etcworlds_current%               nombre del mundo actual del jugador
- *   %etcworlds_loaded_count%          mundos cargados
- *   %etcworlds_managed_count%         mundos administrados
- *   %etcworlds_player_count_<world>%  jugadores en un mundo concreto
- *   %etcworlds_template_<world>%      template del mundo
- *   %etcworlds_spawn_<world>%         coordenadas spawn x,y,z
+ * Placeholders de ETCWorlds.
+ *
+ * Genéricos:
+ *   %etcworlds_current%                 nombre del mundo actual del jugador
+ *   %etcworlds_loaded_count%            mundos cargados en el server
+ *   %etcworlds_managed_count%           mundos administrados por ETCWorlds
+ *
+ * Mundo actual del jugador (atajos):
+ *   %etcworlds_world_displayname%       displayName del mundo donde está
+ *                                       (si está vacío, devuelve el nombre del mundo)
+ *   %etcworlds_world_name%              alias de %etcworlds_current%
+ *   %etcworlds_world_template%          template del mundo actual
+ *   %etcworlds_world_pvp%               true/false si pvp está activo
+ *   %etcworlds_world_group%             grupo de inventario/xp/gm
+ *
+ * Mundo concreto:
+ *   %etcworlds_displayname_<world>%     displayName de un mundo específico
+ *   %etcworlds_template_<world>%        template
+ *   %etcworlds_spawn_<world>%           "x,y,z"
+ *   %etcworlds_player_count_<world>%    cuántos jugadores hay
+ *   %etcworlds_pvp_<world>%             true/false
+ *   %etcworlds_group_<world>%           grupo
  */
 public class PlaceholderHook extends PlaceholderExpansion {
 
@@ -30,38 +46,72 @@ public class PlaceholderHook extends PlaceholderExpansion {
 
     @Override
     public String onRequest(OfflinePlayer p, @NotNull String params) {
-        if (params.equalsIgnoreCase("current"))
-            return p != null && p.getPlayer() != null ? p.getPlayer().getWorld().getName() : "";
-        if (params.equalsIgnoreCase("loaded_count")) return String.valueOf(Bukkit.getWorlds().size());
-        if (params.equalsIgnoreCase("managed_count")) return String.valueOf(plugin.worlds().getManagedNames().size());
+        String key = params.toLowerCase();
 
-        String[] parts = params.split("_", 2);
-        if (parts.length == 2) {
-            String key = parts[0].toLowerCase();
-            String name = parts[1];
-            switch (key) {
-                case "player" -> {
-                    if (name.startsWith("count_")) name = name.substring(6);
-                    World w = Bukkit.getWorld(name);
-                    return w != null ? String.valueOf(w.getPlayers().size()) : "0";
-                }
-                case "template" -> {
-                    WorldRules r = plugin.worlds().getRules(name);
-                    return r != null ? r.template.name() : "";
-                }
-                case "spawn" -> {
-                    WorldRules r = plugin.worlds().getRules(name);
-                    if (r == null) return "";
-                    return ((int) r.spawnX) + "," + ((int) r.spawnY) + "," + ((int) r.spawnZ);
-                }
+        // ── Globales sin parámetro ─────────────────────────────────────────
+        if (key.equals("current") || key.equals("world_name")) {
+            return p != null && p.getPlayer() != null ? p.getPlayer().getWorld().getName() : "";
+        }
+        if (key.equals("loaded_count")) return String.valueOf(Bukkit.getWorlds().size());
+        if (key.equals("managed_count")) return String.valueOf(plugin.worlds().getManagedNames().size());
+
+        // ── Atajos del mundo actual del jugador ────────────────────────────
+        Player online = p != null ? p.getPlayer() : null;
+        if (online != null) {
+            String currentName = online.getWorld().getName();
+            if (key.equals("world_displayname") || key.equals("world_display_name")) {
+                return resolveDisplayName(currentName);
             }
-            // %etcworlds_player_count_<world>%
-            if (params.startsWith("player_count_")) {
-                String wn = params.substring("player_count_".length());
-                World w = Bukkit.getWorld(wn);
-                return w != null ? String.valueOf(w.getPlayers().size()) : "0";
+            if (key.equals("world_template")) {
+                WorldRules r = plugin.worlds().getRules(currentName);
+                return r != null ? r.template.name() : "";
+            }
+            if (key.equals("world_pvp")) {
+                WorldRules r = plugin.worlds().getRules(currentName);
+                return String.valueOf(r != null && r.pvp);
+            }
+            if (key.equals("world_group")) {
+                WorldRules r = plugin.worlds().getRules(currentName);
+                return r != null ? r.worldGroup : "";
             }
         }
+
+        // ── Con parámetro: <prefijo>_<world> ───────────────────────────────
+        if (key.startsWith("player_count_")) {
+            String wn = params.substring("player_count_".length());
+            World w = Bukkit.getWorld(wn);
+            return w != null ? String.valueOf(w.getPlayers().size()) : "0";
+        }
+        if (key.startsWith("displayname_")) {
+            return resolveDisplayName(params.substring("displayname_".length()));
+        }
+        if (key.startsWith("display_name_")) {
+            return resolveDisplayName(params.substring("display_name_".length()));
+        }
+        if (key.startsWith("template_")) {
+            WorldRules r = plugin.worlds().getRules(params.substring("template_".length()));
+            return r != null ? r.template.name() : "";
+        }
+        if (key.startsWith("spawn_")) {
+            WorldRules r = plugin.worlds().getRules(params.substring("spawn_".length()));
+            if (r == null) return "";
+            return ((int) r.spawnX) + "," + ((int) r.spawnY) + "," + ((int) r.spawnZ);
+        }
+        if (key.startsWith("pvp_")) {
+            WorldRules r = plugin.worlds().getRules(params.substring("pvp_".length()));
+            return String.valueOf(r != null && r.pvp);
+        }
+        if (key.startsWith("group_")) {
+            WorldRules r = plugin.worlds().getRules(params.substring("group_".length()));
+            return r != null ? r.worldGroup : "";
+        }
+
         return null;
+    }
+
+    private String resolveDisplayName(String worldName) {
+        WorldRules r = plugin.worlds().getRules(worldName);
+        if (r != null && !r.displayName.isEmpty()) return r.displayName;
+        return worldName;
     }
 }

@@ -25,6 +25,15 @@ public class PortalLinkListener implements Listener {
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void onPlayerPortal(PlayerPortalEvent e) {
         if (e.getFrom() == null || e.getFrom().getWorld() == null) return;
+        // Bloquear portales nether/end dentro de PocketWorlds
+        if (plugin.pocketWorlds() != null
+                && plugin.pocketWorlds().isPocketWorld(e.getFrom().getWorld().getName())
+                && (e.getCause() == TeleportCause.NETHER_PORTAL
+                 || e.getCause() == TeleportCause.END_PORTAL
+                 || e.getCause() == TeleportCause.END_GATEWAY)) {
+            e.setCancelled(true);
+            return;
+        }
         WorldRules r = plugin.worlds().getRules(e.getFrom().getWorld().getName());
         if (r == null) return;
         String targetName = switch (e.getCause()) {
@@ -47,6 +56,12 @@ public class PortalLinkListener implements Listener {
 
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void onEntityPortal(EntityPortalEvent e) {
+        if (e.getFrom() != null && e.getFrom().getWorld() != null
+                && plugin.pocketWorlds() != null
+                && plugin.pocketWorlds().isPocketWorld(e.getFrom().getWorld().getName())) {
+            e.setCancelled(true);
+            return;
+        }
         Location to = redirect(e.getFrom(), TeleportCause.NETHER_PORTAL);
         if (to != null) e.setTo(to);
     }

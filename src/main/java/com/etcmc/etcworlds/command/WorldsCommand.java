@@ -293,7 +293,7 @@ public class WorldsCommand implements CommandExecutor, TabCompleter {
             s.sendMessage(ChatColor.YELLOW + "Uso: /etcworlds set <world> <property> <value>");
             s.sendMessage(ChatColor.GRAY + "Propiedades: pvp, mob-spawn, animal-spawn, fall-damage, hunger, " +
                     "build, fly, gamemode, keep-inv, weather-locked, time-locked, fixed-time, " +
-                    "border-size, view-distance, public-access, access-permission, group, keep-loaded, template, instance");
+                    "border-size, view-distance, public-access, menu-visible, display-name, access-permission, group, keep-loaded, template, instance");
             return true;
         }
         String world = a[1];
@@ -318,6 +318,17 @@ public class WorldsCommand implements CommandExecutor, TabCompleter {
             case "border-size" -> r.borderSize = Double.parseDouble(val);
             case "view-distance" -> r.viewDistance = Integer.parseInt(val);
             case "public-access" -> r.publicAccess = Boolean.parseBoolean(val);
+            case "menu-visible" -> r.menuVisible = Boolean.parseBoolean(val);
+            case "display-name", "displayname" -> {
+                // Permite frases con espacios: une args desde a[3] en adelante
+                if (a.length > 4) {
+                    StringBuilder sb = new StringBuilder(a[3]);
+                    for (int i = 4; i < a.length; i++) sb.append(' ').append(a[i]);
+                    r.displayName = sb.toString();
+                } else {
+                    r.displayName = val;
+                }
+            }
             case "access-permission" -> r.accessPermission = val;
             case "group" -> r.worldGroup = val;
             case "keep-loaded" -> r.keepLoaded = Boolean.parseBoolean(val);
@@ -765,7 +776,7 @@ public class WorldsCommand implements CommandExecutor, TabCompleter {
         if (a.length == 3 && (a[0].equalsIgnoreCase("difficulty") || a[0].equalsIgnoreCase("diff")))
             return List.of("peaceful", "easy", "normal", "hard");
         if (a.length == 2 && a[0].equalsIgnoreCase("list"))
-            return List.of("all", "created", "pocket");
+            return List.of("all", "created", "pocket", "vanilla");
         return List.of();
     }
 
