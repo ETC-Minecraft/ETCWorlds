@@ -340,8 +340,18 @@ public class WorldsCommand implements CommandExecutor, TabCompleter {
             default -> { s.sendMessage(ChatColor.RED + "Propiedad desconocida."); return true; }
         }
         plugin.worlds().saveRules(world);
+        // Folia: aplicar las reglas (que tocan setters del World) en el hilo global.
+        // Algunas propiedades como display-name/group/access-permission no requieren
+        // re-aplicar nada al mundo, pero por simplicidad lo hacemos siempre en region scheduler.
         World w = Bukkit.getWorld(world);
-        if (w != null) plugin.worlds().applyRules(w, r);
+        if (w != null) {
+            try {
+                Bukkit.getGlobalRegionScheduler().run(plugin, t -> plugin.worlds().applyRules(w, r));
+            } catch (Throwable ignored) {
+                // Servidor no-Folia: aplicar directo.
+                plugin.worlds().applyRules(w, r);
+            }
+        }
         s.sendMessage(ChatColor.GREEN + prop + " = " + val);
         return true;
     }
