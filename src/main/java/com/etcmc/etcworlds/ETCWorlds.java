@@ -108,10 +108,33 @@ public final class ETCWorlds extends JavaPlugin {
         this.idleWorldUnloader.start();
         this.backupManager.start();
 
-        // PlaceholderAPI (si existe)
-        if (Bukkit.getPluginManager().isPluginEnabled("PlaceholderAPI")) {
-            new PlaceholderHook(this).register();
-            getLogger().info("Hook PlaceholderAPI registrado.");
+        // PlaceholderAPI: registrar en ServerLoadEvent para garantizar que PAPI
+        // ya este completamente activo (requerido en Folia y en arranques frios).
+        // Fallback: tambien intentamos en onEnable por si el server ya cargo (recarga).
+        if (Bukkit.getPluginManager().getPlugin("PlaceholderAPI") != null) {
+            if (Bukkit.getPluginManager().isPluginEnabled("PlaceholderAPI")) {
+                boolean ok = new PlaceholderHook(this).register();
+                if (ok) getLogger().info("Hook PlaceholderAPI registrado.");
+                else    getLogger().warning("PlaceholderHook.register() devolvio false (se reintentara en ServerLoadEvent).");
+            }
+            // Registrar listener para reintentar cuando el server este completamente cargado.
+            Bukkit.getPluginManager().registerEvents(new org.bukkit.event.Listener() {
+                @org.bukkit.event.EventHandler
+                public void onServerLoad(io.papermc.paper.event.server.ServerResourcesReloadedEvent e) {
+                    if (Bukkit.getPluginManager().isPluginEnabled("PlaceholderAPI")) {
+                        new PlaceholderHook(ETCWorlds.this).register();
+                        getLogger().info("Hook PlaceholderAPI re-registrado tras reload.");
+                    }
+                }
+            }, this);
+            // Para arranque inicial (no hay ServerResourcesReloadedEvent al boot):
+            // Diferir 2 ticks via global region para que PAPI termine su init.
+            Bukkit.getGlobalRegionScheduler().runDelayed(this, t -> {
+                if (Bukkit.getPluginManager().isPluginEnabled("PlaceholderAPI")) {
+                    boolean ok = new PlaceholderHook(ETCWorlds.this).register();
+                    if (ok) getLogger().info("Hook PlaceholderAPI registrado (tick-delayed).");
+                }
+            }, 2L);
         }
 
         // ETCCore hook (variables/acciones)
