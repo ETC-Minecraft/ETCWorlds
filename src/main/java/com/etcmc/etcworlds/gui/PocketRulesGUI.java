@@ -64,6 +64,7 @@ public class PocketRulesGUI implements Listener {
         // Admin-only
         inv.setItem(13, flagItem(worldName, "keep-inventory", r.keepInventoryOnDeath, Material.TOTEM_OF_UNDYING,  "Keep Inventory",     "Mantener inventario al morir.\nADMIN-ONLY (anti-trampas).", true,  isAdmin));
         inv.setItem(14, flagItem(worldName, "immediate-respawn", r.immediateRespawn,  Material.RESPAWN_ANCHOR,    "Respawn inmediato",  "Saltarse la pantalla 'You died'.\nADMIN-ONLY.", true,  isAdmin));
+        inv.setItem(15, flagItem(worldName, "void-pardon",     r.voidPardon,           Material.ENDER_EYE,         "Void Pardon",        "Teletransporta al jugador al cielo\nsi cae al void, evitando la muerte.\nADMIN-ONLY.", true, isAdmin));
 
         // Info / cerrar
         inv.setItem(22, infoItem(worldName, r));
@@ -176,7 +177,7 @@ public class PocketRulesGUI implements Listener {
         boolean admin = p.hasPermission("etcworlds.pw.admin") || p.isOp();
         if (admin) return true;
         // Admin-only flags
-        if (flagId.equals("keep-inventory") || flagId.equals("immediate-respawn")) return false;
+        if (flagId.equals("keep-inventory") || flagId.equals("immediate-respawn") || flagId.equals("void-pardon")) return false;
         // Resto: dueno o usuario con permiso de editar rules (no cualquier invitee)
         if (plugin.pocketWorlds() == null) return false;
         var pw = plugin.pocketWorlds().getByWorldName(world);
@@ -198,6 +199,7 @@ public class PocketRulesGUI implements Listener {
             case "time-locked" -> r.timeLocked;
             case "keep-inventory" -> r.keepInventoryOnDeath;
             case "immediate-respawn" -> r.immediateRespawn;
+            case "void-pardon" -> r.voidPardon;
             default -> false;
         };
     }
@@ -216,6 +218,7 @@ public class PocketRulesGUI implements Listener {
             case "time-locked" -> r.timeLocked = v;
             case "keep-inventory" -> r.keepInventoryOnDeath = v;
             case "immediate-respawn" -> r.immediateRespawn = v;
+            case "void-pardon" -> r.voidPardon = v;
         }
     }
 

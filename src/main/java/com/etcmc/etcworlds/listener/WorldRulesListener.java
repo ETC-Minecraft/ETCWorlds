@@ -20,6 +20,7 @@ import org.bukkit.event.player.PlayerCommandPreprocessEvent;
 import org.bukkit.event.player.PlayerGameModeChangeEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
+import org.bukkit.event.player.PlayerMoveEvent;
 import org.bukkit.event.player.PlayerRespawnEvent;
 import org.bukkit.event.player.PlayerTeleportEvent;
 
@@ -257,6 +258,7 @@ public class WorldRulesListener implements Listener {
     }
 
     private final java.util.Map<java.util.UUID, Long> lastDenyMsg = new java.util.concurrent.ConcurrentHashMap<>();
+    private final java.util.Set<java.util.UUID> voidPardonCooldown = java.util.concurrent.ConcurrentHashMap.newKeySet();
 
     /**
      * Devuelve true si el mundo es un pocketworld y el jugador es DUENO o esta en
@@ -270,6 +272,48 @@ public class WorldRulesListener implements Listener {
         java.util.UUID owner = plugin.pocketWorlds().getOwnerOf(world);
         if (owner == null) return false;
         return plugin.pocketWorlds().isUser(owner, p.getUniqueId());
+    }
+
+    /**
+     * Void pardon para PocketWorlds: detecta cuando el jugador cae por debajo del
+     * umbral del void y lo teletransporta al cielo (Y=2031) manteniendo X y Z.
+     */
+    @EventHandler(priority = EventPriority.HIGH)
+    public void onVoidPardon(PlayerMoveEvent e) {
+        if (e.getTo() == null) return;
+        // Solo actuar cuando hay cambio de bloque en Y para reducir overhead
+        if (e.getFrom().getBlockY() == e.getTo().getBlockY()) return;
+        Player p = e.getPlayer();
+        if (plugin.pocketWorlds() == null || !plugin.pocketWorlds().isPocketWorld(p.getWorld().getName())) return;
+        WorldRules rVoid = plugin.worlds().getRules(p.getWorld().getName());
+        if (rVoid != null && !rVoid.voidPardon) return;
+        // Umbral: 5 bloques por encima del minHeight del mundo (antes de que empiece el daño de void)
+        if (e.getTo().getY() >= p.getWorld().getMinHeight() + 5) return;
+        if (!voidPardonCooldown.add(p.getUniqueId())) return; // ya en proceso
+        Location dest = new Location(p.getWorld(), e.getTo().getX(), 2031, e.getTo().getZ(),
+                p.getLocation().getYaw(), p.getLocation().getPitch());
+        try {
+            p.getScheduler().run(plugin, t -> {
+                if (!p.isOnline()) { voidPardonCooldown.remove(p.getUniqueId()); return; }
+                p.teleportAsync(dest).thenRun(() -> voidPardonCooldown.remove(p.getUniqueId()));
+            }, () -> voidPardonCooldown.remove(p.getUniqueId()));
+        } catch (Throwable ignored) {
+            org.bukkit.Bukkit.getScheduler().runTask(plugin, () -> {
+                voidPardonCooldown.remove(p.getUniqueId());
+                if (p.isOnline()) p.teleportAsync(dest);
+            });
+        }
+    }
+
+    /** Cancela el daño de void en PocketWorlds como red de seguridad adicional. */
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    public void onVoidDamage(EntityDamageEvent e) {
+        if (e.getCause() != EntityDamageEvent.DamageCause.VOID) return;
+        if (!(e.getEntity() instanceof Player p)) return;
+        if (plugin.pocketWorlds() == null || !plugin.pocketWorlds().isPocketWorld(p.getWorld().getName())) return;
+        WorldRules rVoidDmg = plugin.worlds().getRules(p.getWorld().getName());
+        if (rVoidDmg != null && !rVoidDmg.voidPardon) return;
+        e.setCancelled(true);
     }
 
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)

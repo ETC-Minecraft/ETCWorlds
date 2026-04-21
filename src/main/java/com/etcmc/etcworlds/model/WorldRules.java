@@ -48,6 +48,7 @@ public class WorldRules {
     public boolean interactEnabled = true;    // permitir interactuar con bloques (puertas, cofres, palancas, etc.)
     public boolean immediateRespawn = false;  // gamerule DO_IMMEDIATE_RESPAWN
     public boolean hunger = true;             // si no, sacia automáticamente
+    public boolean voidPardon = true;         // teletransporta al jugador si cae al void (solo PocketWorlds)
     public boolean autoSave = true;
     public int viewDistance = -1;             // -1 = usar el global
     public int simulationDistance = -1;
@@ -129,6 +130,7 @@ public class WorldRules {
         r.interactEnabled = s.getBoolean("interact-enabled", true);
         r.immediateRespawn = s.getBoolean("immediate-respawn", false);
         r.hunger = s.getBoolean("hunger", true);
+        r.voidPardon = s.getBoolean("void-pardon", true);
         r.autoSave = s.getBoolean("auto-save", true);
         r.viewDistance = s.getInt("view-distance", -1);
         r.simulationDistance = s.getInt("simulation-distance", -1);
@@ -203,6 +205,7 @@ public class WorldRules {
         s.set("interact-enabled", interactEnabled);
         s.set("immediate-respawn", immediateRespawn);
         s.set("hunger", hunger);
+        s.set("void-pardon", voidPardon);
         s.set("auto-save", autoSave);
         s.set("view-distance", viewDistance);
         s.set("simulation-distance", simulationDistance);
