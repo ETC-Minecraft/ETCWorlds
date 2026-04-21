@@ -89,6 +89,10 @@ pocketworlds:
   default-immediate-respawn: true
   # Mensaje al entrar. {player} = nombre.
   enter-message: "&aBienvenido a tu PocketWorld, &e{player}&a."
+  # Display-name por defecto de los pocketworlds (usado en placeholders cuando no se
+  # ha asignado un display-name personalizado con /ecw set <world> display-name <nombre>).
+  # {player} = nombre del dueno del PW. Si lo dejas vacio, se muestra el nombre del folder.
+  default-display-name: "PW {player}"
 
 # === Mensajes ===
 messages:

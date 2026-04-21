@@ -9,6 +9,8 @@ import org.bukkit.World;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 
+import java.util.UUID;
+
 /**
  * Placeholders de ETCWorlds.
  *
@@ -111,7 +113,21 @@ public class PlaceholderHook extends PlaceholderExpansion {
 
     private String resolveDisplayName(String worldName) {
         WorldRules r = plugin.worlds().getRules(worldName);
+        // Si ya tiene un display-name personalizado, usarlo siempre.
         if (r != null && !r.displayName.isEmpty()) return r.displayName;
+        // PocketWorld sin display-name personalizado: usar el formato configurable.
+        if (plugin.pocketWorlds() != null && plugin.pocketWorlds().isPocketWorld(worldName)) {
+            UUID ownerUuid = plugin.pocketWorlds().getOwnerOf(worldName);
+            if (ownerUuid != null) {
+                String fmt = plugin.getConfig().getString("pocketworlds.default-display-name", "PW {player}");
+                if (fmt != null && !fmt.isBlank()) {
+                    String ownerName = org.bukkit.Bukkit.getOfflinePlayer(ownerUuid).getName();
+                    if (ownerName == null) ownerName = ownerUuid.toString().substring(0, 8);
+                    return fmt.replace("{player}", ownerName);
+                }
+            }
+        }
+        // Fallback: nombre del folder.
         return worldName;
     }
 }

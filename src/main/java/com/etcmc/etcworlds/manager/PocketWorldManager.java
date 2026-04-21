@@ -341,6 +341,12 @@ public class PocketWorldManager {
         String enter = plugin.getConfig().getString("pocketworlds.enter-message",
                 "&aBienvenido a tu PocketWorld, &e{player}&a.");
         r.enterMessage = enter.replace("{player}", owner.getName());
+        // Display-name por defecto usando el formato configurable.
+        // Si el admin lo sobreescribe con /ecw set <world> display-name <valor>, ese toma precedencia.
+        String dnFmt = plugin.getConfig().getString("pocketworlds.default-display-name", "PW {player}");
+        if (dnFmt != null && !dnFmt.isBlank()) {
+            r.displayName = dnFmt.replace("{player}", owner.getName());
+        }
 
         Bukkit.getGlobalRegionScheduler().run(plugin, t -> {
             try {
